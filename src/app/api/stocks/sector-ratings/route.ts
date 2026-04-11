@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as cheerio from "cheerio";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -138,24 +139,110 @@ async function fetchSectorRatings(): Promise<SectorRating[]> {
   }
 }
 
-/**
- * GET /api/stocks/sector-ratings
- * Returns sector valuation ratings from chungkhoancaykhe.vn
- */
+export interface DetailedStock {
+  ticker: string;
+  score: number;
+}
+
+export interface DetailedSector {
+  name: string;
+  avgScore: number;
+  stocks: DetailedStock[];
+}
+
+async function fetchDetailedSectors(): Promise<DetailedSector[]> {
+  try {
+    const response = await fetch("https://chungkhoancaykhe.vn/overview", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+      next: { revalidate: 3600 }
+    });
+
+    if (!response.ok) return [];
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const detailedSectors: DetailedSector[] = [];
+
+    // Detailed tables are usually <table> tags that contain "avg" in their headers
+    $("table").each((_index: number, table: any) => {
+      const $table = $(table);
+      const headers = $table.find("thead th");
+      
+      // Check if this table has "avg" in its headers
+      const hasAvg = headers.text().toLowerCase().includes("avg");
+      if (!hasAvg) return;
+
+      const sectorData: DetailedSector[] = [];
+      
+      // 1. Get Sector Names and Avg Scores from headers
+      headers.each((i: number, th: any) => {
+        const text = $(th).text().trim();
+        const lines = text.split(/\n/).map((l: string) => l.trim()).filter((l: string) => l);
+        
+        let name = "";
+        let avgScore = 0;
+
+        if (lines.length >= 1) {
+          // Sometimes name and avg are in separate divs/spans
+          const nameEl = $(th).find("div").first();
+          const avgEl = $(th).find("span").first();
+          
+          name = nameEl.text().trim() || lines[0];
+          const avgMatch = (avgEl.text() || text).match(/avg\s*(\d+)/i);
+          if (avgMatch) avgScore = parseInt(avgMatch[1], 10);
+        }
+
+        if (name && name !== "#" && name !== "±") {
+          sectorData.push({ name, avgScore, stocks: [] });
+        }
+      });
+
+      // 2. Get Stocks from tbody
+      $table.find("tbody tr").each((_index: number, tr: any) => {
+        const cells = $(tr).find("td");
+        cells.each((i: number, td: any) => {
+          if (!sectorData[i]) return;
+
+          // Inside each cell: ticker name and score
+          const ticker = $(td).find("span").first().text().trim();
+          const scoreText = $(td).find("span").last().text().trim();
+          const score = parseInt(scoreText, 10);
+
+          if (ticker && !isNaN(score)) {
+            sectorData[i].stocks.push({ ticker, score });
+          }
+        });
+      });
+
+      detailedSectors.push(...sectorData.filter(s => s.stocks.length > 0));
+    });
+
+    return detailedSectors;
+  } catch (error) {
+    console.error("❌ Error fetching detailed sectors:", error);
+    return [];
+  }
+}
+
 export async function GET() {
   try {
-    const ratings = await fetchSectorRatings();
+    const [ratings, detailedSectors] = await Promise.all([
+      fetchSectorRatings(),
+      fetchDetailedSectors()
+    ]);
 
-    // Cache the response for 1 hour (3600 seconds)
     return NextResponse.json(
       {
         success: true,
         data: ratings,
+        detailedSectors: detailedSectors,
         timestamp: new Date().toISOString(),
       },
       {
         headers: {
-          "Cache-Control": "public, max-age=3600, s-maxage=3600",
+          "Cache-Control": "no-store, max-age=0",
         },
       },
     );
