@@ -38,6 +38,14 @@ const navItems: NavItem[] = [
     path: "/calendar",
   },
   {
+    icon: <PieChartIcon />,
+    name: "Stocks",
+    subItems: [
+      { name: "Dashboard", path: "/stocks", pro: false },
+      { name: "Technical Ratings", path: "/stock-ratings", pro: false, new: true },
+    ],
+  },
+  {
     icon: <UserCircleIcon />,
     name: "User Profile",
     path: "/profile",
@@ -258,6 +266,7 @@ const AppSidebar: React.FC = () => {
 
     // If no submenu item matches, close the open submenu
     if (!submenuMatched) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOpenSubmenu(null);
     }
   }, [pathname,isActive]);
