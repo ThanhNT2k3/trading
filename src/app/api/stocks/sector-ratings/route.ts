@@ -226,11 +226,27 @@ async function fetchDetailedSectors(): Promise<DetailedSector[]> {
   }
 }
 
+/**
+ * Utility function to add timeout to promises
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  errorMessage: string = "Operation timed out"
+): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]);
+}
+
 export async function GET() {
   try {
+    // Run both API calls in parallel with timeout protection
     const [ratings, detailedSectors] = await Promise.all([
-      fetchSectorRatings(),
-      fetchDetailedSectors()
+      withTimeout(fetchSectorRatings(), 15000, "Sector ratings API timeout"),
+      withTimeout(fetchDetailedSectors(), 15000, "Detailed sectors API timeout")
     ]);
 
     return NextResponse.json(
@@ -242,7 +258,7 @@ export async function GET() {
       },
       {
         headers: {
-          "Cache-Control": "no-store, max-age=0",
+          "Cache-Control": "public, max-age=300, stale-while-revalidate=600", // Cache for 5 minutes
         },
       },
     );
@@ -252,6 +268,7 @@ export async function GET() {
       {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
       },
       { status: 500 },
     );

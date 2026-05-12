@@ -266,6 +266,10 @@ function buildStockRowFromHistory(
     roe: pePbData?.now.roe ?? null,
     marketCap: pePbData?.now.marketCap ?? null,
     proprietaryTradeVolume: proprietaryData?.volume ?? null,
+    ath: null,
+    athDate: null,
+    isAtATH: false,
+    athReachedWithin1Year: false,
   };
 }
 
@@ -390,6 +394,9 @@ async function fetchPEPBData(ticker: string): Promise<PEPBData | null> {
   }
 }
 
+// This function is disabled to prevent continuous API calls to CAFEF
+// The proprietary trade data endpoint was causing excessive requests
+/*
 async function fetchProprietaryTradeData(ticker: string): Promise<ProprietaryTradeData | null> {
   const normalizedTicker = ticker.toUpperCase();
   const cached = proprietaryTradeCache.get(normalizedTicker);
@@ -423,6 +430,7 @@ async function fetchProprietaryTradeData(ticker: string): Promise<ProprietaryTra
     clearTimeout(timeout);
   }
 }
+*/
 
 async function fetchAggressiveVolume(ticker: string): Promise<number | null> {
   const normalizedTicker = ticker.toUpperCase();
@@ -511,8 +519,8 @@ export async function fetchTickerRow(
   try {
     const points = await fetchTickerHistory(ticker, startDate, endDate);
     const pePbData = await fetchPEPBData(ticker);
-    const proprietaryData = await fetchProprietaryTradeData(ticker);
-    return buildStockRowFromHistory(ticker, points, null, pePbData, proprietaryData);
+    // Proprietary trade data removed to prevent continuous API calls
+    return buildStockRowFromHistory(ticker, points, null, pePbData, null);
   } catch (error) {
     const message =
       error instanceof Error && error.name === "AbortError"
@@ -546,6 +554,10 @@ export async function fetchTickerRow(
       roe: null,
       marketCap: null,
       proprietaryTradeVolume: null,
+      ath: null,
+      athDate: null,
+      isAtATH: false,
+      athReachedWithin1Year: false,
       error: message,
     };
   }
@@ -571,19 +583,13 @@ export async function fetchTickerRows(
     ),
   );
 
-  // Fetch PE/PB and proprietary trade data in parallel
+  // Fetch PE/PB data in parallel (proprietary trade data removed to prevent continuous API calls)
   const pePbDataMap = new Map<string, PEPBData | null>();
-  const proprietaryDataMap = new Map<string, ProprietaryTradeData | null>();
 
   for (let index = 0; index < eligibleTickers.length; index += CONCURRENCY_LIMIT) {
     const chunk = eligibleTickers.slice(index, index + CONCURRENCY_LIMIT);
-    const [pePbResults] = await Promise.all([
-   
-      Promise.all(chunk.map((ticker) => fetchProprietaryTradeData(ticker))),
-    ]);
-    chunk.forEach((ticker, itemIndex) => {
+    chunk.forEach((ticker) => {
       pePbDataMap.set(ticker.toUpperCase(), null); // Will be fetched individually in fetchTickerRow to leverage caching
-      proprietaryDataMap.set(ticker.toUpperCase(), null); // Will be fetched individually in fetchTickerRow to leverage caching
     });
   }
 
@@ -597,7 +603,7 @@ export async function fetchTickerRows(
         points,
         aggressiveVolumes.get(chunk[itemIndex].toUpperCase()) ?? null,
         pePbDataMap.get(chunk[itemIndex].toUpperCase()) ?? null,
-        proprietaryDataMap.get(chunk[itemIndex].toUpperCase()) ?? null,
+        null, // Proprietary data removed to prevent continuous API calls
       ),
     );
     rows.push(...mappedRows);

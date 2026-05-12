@@ -88,6 +88,33 @@ export function enrichStockRow(row: StockRow): StockRow {
   const isNear52WeekLow =
     latestClose !== null && latestClose > 0 ? (latestClose - closeMin) / latestClose <= EPSILON_52W : false;
 
+  // Calculate All-Time High (ATH)
+  const athPrice = closeMax;
+  let athDate: string | null = null;
+  let athReachedWithin1Year = false;
+  
+  // Find the date when ATH was reached (latest occurrence if multiple)
+  if (closeMax > 0) {
+    const athIndex = closes.lastIndexOf(closeMax);
+    if (athIndex >= 0) {
+      const athPoint = row.points[athIndex];
+      if (athPoint) {
+        const athTimestamp = new Date(athPoint.time * 1000);
+        athDate = athTimestamp.toISOString().split('T')[0];
+        
+        // Check if ATH was reached within 1 year
+        const now = new Date();
+        const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        athReachedWithin1Year = athTimestamp >= oneYearAgo;
+      }
+    }
+  }
+  
+  // Check if current price is at ATH (within 0.1%)
+  const isAtATH = latestClose !== null && closeMax > 0 
+    ? Math.abs(latestClose - closeMax) / closeMax <= 0.001
+    : false;
+
   return {
     ...row,
     latestVolume,
@@ -104,6 +131,10 @@ export function enrichStockRow(row: StockRow): StockRow {
     isNear52WeekHigh,
     isNear52WeekLow,
     hasEnough52WeekData,
+    ath: athPrice > 0 ? athPrice : null,
+    athDate,
+    isAtATH,
+    athReachedWithin1Year,
   };
 }
 
@@ -126,6 +157,34 @@ export function filterByLiquidity(
     if (maxVolume !== null && volume > maxVolume) return false;
     return true;
   });
+}
+
+export function filterByATH(
+  rows: StockRow[],
+  athFilterType: "ALL" | "AT_ATH" | "REACHED_1YEAR" | "NEAR_ATH"
+): StockRow[] {
+  if (athFilterType === "ALL") return rows;
+  if (athFilterType === "AT_ATH") return rows.filter((row) => row.isAtATH);
+  if (athFilterType === "REACHED_1YEAR") return rows.filter((row) => row.athReachedWithin1Year);
+  if (athFilterType === "NEAR_ATH") {
+    return rows.filter((row) => {
+      if (row.ath === null || row.latestClose === null) return false;
+      const diff = (row.ath - row.latestClose) / row.ath;
+      return diff >= 0 && diff <= 0.05; // Within 5% of ATH
+    });
+  }
+  return rows;
+}
+
+export function getStocksAtATHWithin1Year(rows: StockRow[]): StockRow[] {
+  return rows
+    .filter((row) => row.athReachedWithin1Year)
+    .sort((a, b) => {
+      // Sort by ATH date (newest first)
+      const dateA = a.athDate ? new Date(a.athDate).getTime() : 0;
+      const dateB = b.athDate ? new Date(b.athDate).getTime() : 0;
+      return dateB - dateA;
+    });
 }
 
 export function computeBreadthMetrics(rows: StockRow[]): BreadthMetrics {

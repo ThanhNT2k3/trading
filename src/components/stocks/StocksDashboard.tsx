@@ -8,20 +8,15 @@ import StockSummaryCards from "@/components/stocks/StockSummaryCards";
 import StockTable from "@/components/stocks/StockTable";
 import StockLineChart from "@/components/stocks/StockLineChart";
 import StockTechnicalAnalysis from "@/components/stocks/StockTechnicalAnalysis";
-import ForeignInvestorChart from "@/components/stocks/ForeignInvestorChart";
-import ProprietaryTradingChart from "@/components/stocks/ProprietaryTradingChart";
-import ForeignInvestorMarketTable from "@/components/stocks/ForeignInvestorMarketTable";
-import ProprietaryTradingMarketTable from "@/components/stocks/ProprietaryTradingMarketTable";
+import ATHStocksTable from "@/components/stocks/ATHStocksTable";
 import ForeignInvestorHistoryStacked from "@/components/stocks/ForeignInvestorHistoryStacked";
 import ProprietaryTradingHistoryStacked from "@/components/stocks/ProprietaryTradingHistoryStacked";
 import Top5StockersHorizontalBar from "@/components/stocks/Top5StockersHorizontalBar";
-import PERatioDisplay from "@/components/stocks/PERatioDisplay";
 import { fetchTickerRow, fetchTickerRows, fetchVixSnapshot } from "@/lib/stocks/api";
 import {
   buildDailyAggregateRows,
   computeBreadthMetrics,
   computeMarketOverview,
-  computeMovingAverageMetrics,
   computePowerMetrics,
   computeVolumeMomentum,
   enrichStockRow,
@@ -35,7 +30,7 @@ const DEFAULT_MIN_TRADE_VALUE = "1000000000";
 function getDefaultDateRange() {
   const end = new Date();
   const start = new Date();
-  start.setDate(end.getDate() - 30);
+  start.setFullYear(end.getFullYear() - 1);
   return {
     startDate: start.toISOString().slice(0, 10),
     endDate: end.toISOString().slice(0, 10),
@@ -151,7 +146,6 @@ export default function StocksDashboard() {
   );
   const breadthMetrics = useMemo(() => computeBreadthMetrics(rows), [rows]);
   const momentumMetrics = useMemo(() => computeVolumeMomentum(rows), [rows]);
-  const maMetrics = useMemo(() => computeMovingAverageMetrics(rows), [rows]);
   const powerMetrics = useMemo(() => computePowerMetrics(rows), [rows]);
   const marketOverview = useMemo(() => computeMarketOverview(rows, vnIndexRow), [rows, vnIndexRow]);
   const dailyRows = useMemo(() => buildDailyAggregateRows(rows, vnIndexRow), [rows, vnIndexRow]);
@@ -178,26 +172,28 @@ export default function StocksDashboard() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-12 2xl:grid-cols-12">
-        <div className="2xl:col-span-12 space-y-12">
+      <div className="grid grid-cols-1 gap-6 2xl:grid-cols-12">
+        <div className="space-y-6 2xl:col-span-12">
           <StockSummaryCards rows={rows} />
           <MarketOverviewCards items={marketOverview} isLoading={isLoading} />
           <MarketBreadthPanel
             breadth={breadthMetrics}
             momentum={momentumMetrics}
-            maMetrics={maMetrics}
             powerMetrics={powerMetrics}
+            rows={rows}
           />
-          <div className="rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm text-gray-600 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-300">
-            Showing reduced ticker set: {rows.length} / {filteredTickers.length} (max {MAX_FETCH_TICKERS} tickers fetched for performance).
+          <div className="flex flex-col gap-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-300 sm:flex-row sm:items-center sm:justify-between">
+            <span className="font-medium text-gray-800 dark:text-white">Ticker coverage</span>
+            <span>
+              Showing {rows.length} of {filteredTickers.length} tickers. Max {MAX_FETCH_TICKERS} fetched for performance.
+            </span>
           </div>
           <StockTable rows={dailyRows} isLoading={isLoading} vixSnapshot={vixSnapshot} />
+          <ATHStocksTable stocks={rows} isLoading={isLoading} />
         </div>
         
       </div>
-      <div className="2xl:col-span-12 space-y-12">
-      </div>
-      <div className="2xl:col-span-12 space-y-12">
+      <div className="space-y-6 2xl:col-span-12">
         {/* Technical Analysis Section */}
         {selectedRow ? (
           <StockTechnicalAnalysis row={selectedRow} />

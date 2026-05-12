@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import ComponentCard from "@/components/common/ComponentCard";
+import React, { useEffect, useMemo, useState } from "react";
 
 interface SectorRating {
   name: string;
@@ -27,25 +26,62 @@ interface ApiResponse {
   error?: string;
 }
 
-function getRatingColor(rating: number): string {
-  if (rating >= 70) return "bg-purple-600 text-white";
-  if (rating >= 50) return "bg-green-600 text-white";
-  if (rating >= 30) return "bg-orange-500 text-white";
-  return "bg-blue-600 text-white";
+function getTone(score: number) {
+  if (score >= 70) {
+    return {
+      label: "Very strong",
+      badge: "bg-success-100 text-success-800 dark:bg-success-500/20 dark:text-success-300",
+      bar: "bg-success-500",
+      soft: "bg-success-50 dark:bg-success-500/10",
+    };
+  }
+  if (score >= 50) {
+    return {
+      label: "Strong",
+      badge: "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300",
+      bar: "bg-brand-500",
+      soft: "bg-brand-50 dark:bg-brand-500/10",
+    };
+  }
+  if (score >= 30) {
+    return {
+      label: "Neutral",
+      badge: "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-300",
+      bar: "bg-warning-500",
+      soft: "bg-warning-50 dark:bg-warning-500/10",
+    };
+  }
+
+  return {
+    label: "Weak",
+    badge: "bg-error-50 text-error-700 dark:bg-error-500/10 dark:text-error-300",
+    bar: "bg-error-500",
+    soft: "bg-error-50 dark:bg-error-500/10",
+  };
 }
 
-function getScoreColor(score: number): string {
-  if (score >= 70) return "text-purple-600";
-  if (score >= 50) return "text-green-600";
-  if (score >= 30) return "text-orange-500";
-  return "text-blue-600";
+function formatChange(change?: number) {
+  if (change === undefined || change === 0) return "0";
+  return `${change > 0 ? "+" : ""}${change}`;
 }
 
-function getProgressBarColor(score: number): string {
-  if (score >= 70) return "bg-purple-600";
-  if (score >= 50) return "bg-green-600";
-  if (score >= 30) return "bg-orange-500";
-  return "bg-blue-600";
+function Skeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-white/[0.03]">
+        <div className="h-5 w-52 animate-pulse rounded bg-gray-100 dark:bg-white/10" />
+        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="h-24 animate-pulse rounded-xl bg-gray-100 dark:bg-white/10" />
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <div className="h-96 animate-pulse rounded-2xl bg-gray-100 dark:bg-white/10" />
+        <div className="h-96 animate-pulse rounded-2xl bg-gray-100 dark:bg-white/10" />
+      </div>
+    </div>
+  );
 }
 
 export default function SectorValuationRatings() {
@@ -55,11 +91,7 @@ export default function SectorValuationRatings() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-
-  const filteredDetailedSectors = detailedSectors.filter((sector) =>
-    sector.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sector.stocks.some(s => s.ticker.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const [strengthFilter, setStrengthFilter] = useState<"ALL" | "STRONG" | "NEUTRAL" | "WEAK">("ALL");
 
   const fetchRatings = async () => {
     try {
@@ -67,14 +99,12 @@ export default function SectorValuationRatings() {
       setError(null);
 
       const response = await fetch(`/api/stocks/sector-ratings?t=${Date.now()}`);
-
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = (await response.json().catch(() => ({}))) as { error?: string };
         throw new Error(errorData.error || `Server error: ${response.status}`);
       }
 
-      const data: ApiResponse = await response.json();
-
+      const data = (await response.json()) as ApiResponse;
       if (!data.success) {
         throw new Error(data.error || "Failed to fetch sector ratings");
       }
@@ -83,9 +113,7 @@ export default function SectorValuationRatings() {
       setDetailedSectors(data.detailedSectors || []);
       setLastUpdated(new Date().toLocaleTimeString("vi-VN"));
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Unknown error";
-      setError(errorMsg);
-      console.error("❌ Error fetching sector ratings:", err);
+      setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
@@ -94,241 +122,237 @@ export default function SectorValuationRatings() {
   useEffect(() => {
     fetchRatings();
 
-    // Refresh every hour
     const interval = setInterval(fetchRatings, 60 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  if (loading && ratings.length === 0) {
-    return (
-      <div className="space-y-12 animate-pulse">
-        <ComponentCard title="Sector Strength Analysis">
-          <div className="flex flex-col xl:flex-row gap-8 py-4">
-             {[1, 2].map(t => (
-               <div key={t} className="flex-1 space-y-4">
-                 <div className="h-8 bg-gray-100 dark:bg-gray-800 rounded-lg w-1/3" />
-                 {[1, 2, 3, 4, 10].map(i => (
-                   <div key={i} className="h-10 bg-gray-50 dark:bg-gray-800/40 rounded-lg" />
-                 ))}
-               </div>
-             ))}
-          </div>
-        </ComponentCard>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-           {[1, 2, 3, 4].map(i => (
-             <div key={i} className="h-64 bg-gray-100 dark:bg-gray-800 rounded-2xl" />
-           ))}
-        </div>
-      </div>
-    );
-  }
+  const rankedRatings = useMemo(
+    () => [...ratings].sort((a, b) => b.rating - a.rating),
+    [ratings],
+  );
 
-  if (error) {
-    return (
-      <ComponentCard title="Connection Status">
-        <div className="rounded-2xl bg-gradient-to-br from-red-50 to-orange-50 p-8 text-red-800 dark:from-red-900/10 dark:to-orange-900/10 dark:text-red-300 border border-red-100 dark:border-red-900/30">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-2xl text-2xl">📡</div>
-            <div>
-              <p className="font-bold text-xl tracking-tight">Market Data Unreachable</p>
-              <p className="text-sm opacity-70">The system encountered an error while connecting to the primary data stream.</p>
-            </div>
-          </div>
-          <div className="bg-white/40 dark:bg-black/20 p-4 rounded-xl text-sm font-mono mb-6 border border-white/40 dark:border-white/10">
-            {error.includes("fetch failed") ? "ECONNREFUSED: Provider firewall or network timeout." : error}
-          </div>
-          <button
-            onClick={() => fetchRatings()}
-            className="group px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95 flex items-center gap-2"
-          >
-            <span className="group-hover:rotate-180 transition-transform duration-500">🔄</span> Re-establish Connection
-          </button>
-        </div>
-      </ComponentCard>
-    );
-  }
+  const filteredDetailedSectors = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    return detailedSectors
+      .filter((sector) => {
+        if (strengthFilter === "STRONG") return sector.avgScore >= 50;
+        if (strengthFilter === "NEUTRAL") return sector.avgScore >= 30 && sector.avgScore < 50;
+        if (strengthFilter === "WEAK") return sector.avgScore < 30;
+        return true;
+      })
+      .filter((sector) => {
+        if (!query) return true;
+        return (
+          sector.name.toLowerCase().includes(query) ||
+          sector.stocks.some((stock) => stock.ticker.toLowerCase().includes(query))
+        );
+      })
+      .sort((a, b) => b.avgScore - a.avgScore);
+  }, [detailedSectors, searchTerm, strengthFilter]);
+
+  const leader = rankedRatings[0] ?? null;
+  const laggard = rankedRatings[rankedRatings.length - 1] ?? null;
+  const average =
+    rankedRatings.length > 0
+      ? rankedRatings.reduce((sum, sector) => sum + sector.rating, 0) / rankedRatings.length
+      : 0;
+  const strongCount = rankedRatings.filter((sector) => sector.rating >= 50).length;
+
+  if (loading && ratings.length === 0) return <Skeleton />;
 
   return (
-    <div className="space-y-16 pb-20">
-      {/* Ranking Tables Section */}
-      <section className="relative">
-        <div className="absolute -top-4 left-6 px-3 py-1 bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg z-10">
-          Live Market Rank
-        </div>
-        <ComponentCard
-          title="Sector Performance Analytics"
-          className="rounded-[2.5rem] border border-gray-100 bg-white shadow-2xl dark:border-gray-800 dark:bg-white/[0.02] overflow-hidden backdrop-blur-sm"
-        >
-          <div className="space-y-10">
-            {/* Legend */}
-            <div className="flex flex-wrap items-center justify-between gap-6 p-6 bg-gray-50/50 dark:bg-white/[0.03] rounded-[2rem] border border-gray-100 dark:border-white/[0.05]">
-              <div className="flex flex-wrap gap-3">
-                {[
-                  { label: "≥70 Rất mạnh", color: "bg-purple-600 shadow-purple-500/40" },
-                  { label: "50–69 Mạnh", color: "bg-green-600 shadow-green-500/40" },
-                  { label: "30–49 Trung bình", color: "bg-orange-500 shadow-orange-500/40" },
-                  { label: "<30 Yếu", color: "bg-blue-600 shadow-blue-500/40" },
-                ].map((tier) => (
-                  <span key={tier.label} className={`${tier.color} px-5 py-2 text-white rounded-full text-[11px] font-black shadow-lg transition-all hover:scale-105 hover:-translate-y-0.5 cursor-default`}>
-                    {tier.label}
-                  </span>
-                ))}
-              </div>
-              <div className="flex items-center gap-3 text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                <span className="flex h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse" />
-                Updated {lastUpdated}
-              </div>
-            </div>
-
-            {/* Tables Container */}
-            <div className="flex flex-col xl:flex-row gap-16">
-              {[
-                { title: "Top Sector Leaders", icon: "💎", data: ratings.slice(0, Math.ceil(ratings.length / 2)), start: 0 },
-                { title: "Sector Laggards", icon: "📉", data: ratings.slice(Math.ceil(ratings.length / 2)), start: Math.ceil(ratings.length / 2) }
-              ].map((table) => (
-                <div key={table.title} className="flex-1 group">
-                  <div className={`flex items-center justify-between mb-8 pb-5 border-b-2 border-gray-100 dark:border-white/[0.05] transition-colors group-hover:border-blue-500/30`}>
-                     <h3 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-widest flex items-center gap-4">
-                       <span className="text-3xl filter drop-shadow-lg">{table.icon}</span> {table.title}
-                     </h3>
-                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Strength index</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-separate border-spacing-y-3">
-                      <thead>
-                        <tr className="text-[10px] font-bold text-gray-400/80 uppercase tracking-widest">
-                          <th className="pb-2 px-4 w-12 text-center">Rank</th>
-                          <th className="pb-2 px-2 w-16 text-center">Shift</th>
-                          <th className="pb-2 px-2">Industry</th>
-                          <th className="pb-2 px-4 text-right">Score</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {table.data.map((sector, index) => {
-                          const realRank = table.start + index + 1;
-                          const isTop3 = realRank <= 3;
-                          return (
-                            <tr key={sector.name} className={`group/row transition-all hover:bg-white dark:hover:bg-white/[0.08] hover:shadow-2xl hover:shadow-gray-200/50 dark:hover:shadow-none`}>
-                              <td className={`py-4 px-4 text-center font-black rounded-l-2xl ${isTop3 ? "text-gray-900 dark:text-white" : "text-gray-400 text-xs"}`}>
-                                {realRank === 1 ? "🥇" : realRank === 2 ? "🥈" : realRank === 3 ? "🥉" : realRank}
-                              </td>
-                              <td className="py-4 px-2 text-center">
-                                {sector.change !== undefined && (
-                                  <span className={`text-[10px] px-2 py-0.5 rounded-lg font-black flex items-center justify-center gap-1.5 ${sector.change > 0 ? "bg-green-100/60 text-green-700 dark:bg-green-900/30 dark:text-green-400" : sector.change < 0 ? "bg-red-100/60 text-red-700 dark:bg-red-900/30 dark:text-red-400" : "text-gray-300"}`}>
-                                    {sector.change > 0 && "▲"}
-                                    {sector.change < 0 && "▼"}
-                                    {sector.change === 0 && "—"}
-                                    {sector.change !== 0 && Math.abs(sector.change)}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-4 px-2">
-                                <span className={`text-sm font-black tracking-tight leading-none ${isTop3 ? "text-gray-900 dark:text-white" : "text-gray-600 dark:text-gray-400"}`}>
-                                  {sector.name}
-                                </span>
-                              </td>
-                              <td className="py-4 px-4 text-right rounded-r-2xl">
-                                <span className={`${getRatingColor(sector.rating)} inline-flex items-center justify-center w-10 h-10 rounded-2xl font-black text-xs shadow-xl transition-all group-hover/row:scale-110 group-hover/row:rotate-3`}>
-                                  {sector.rating}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </ComponentCard>
-      </section>
-      
-      {/* Detailed Industry Analysis Section */}
-      <section className="space-y-10">
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 border-b border-gray-100 dark:border-white/[0.05] pb-10">
-          <div className="space-y-2">
-            <h2 className="text-4xl font-black text-gray-900 dark:text-white flex items-center gap-5 tracking-tighter">
-             Detailed Sector Forensics
+    <div className="space-y-6">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-white/[0.03]">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">
+              Sector Performance Analytics
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
+              Market strength by industry group
             </h2>
-            <p className="text-sm font-bold text-gray-400 uppercase tracking-[0.4em] leading-none">Component-level RSI dynamics</p>
+            <p className="mt-2 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
+              Compare sector leadership, laggards, and component stocks using the latest strength index.
+            </p>
           </div>
-          
-          <div className="relative group w-full lg:w-96">
-            <input 
-              type="text"
-              placeholder="Search industries or tickers..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-14 pr-8 py-4 bg-white dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.1] rounded-[1.5rem] text-sm focus:ring-8 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all w-full shadow-2xl shadow-blue-500/5 placeholder:text-gray-300 dark:placeholder:text-gray-600"
-            />
-            <span className="absolute left-6 top-1/2 -translate-y-1/2 text-xl filter grayscale opacity-50">🔍</span>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <span className="rounded-lg bg-gray-100 px-3 py-2 text-xs font-medium text-gray-600 dark:bg-white/10 dark:text-gray-300">
+              Updated {lastUpdated || "N/A"}
+            </span>
+            <button
+              type="button"
+              onClick={fetchRatings}
+              disabled={loading}
+              className="h-10 rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+            >
+              {loading ? "Refreshing..." : "Refresh"}
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
-          {filteredDetailedSectors.map((sector) => {
-            const headerColor = sector.avgScore >= 70 ? "from-purple-600 to-indigo-700" : 
-                               sector.avgScore >= 50 ? "from-green-600 to-emerald-700" :
-                               sector.avgScore >= 30 ? "from-orange-500 to-amber-600" : "from-blue-600 to-cyan-700";
-            return (
-              <div
-                key={sector.name}
-                className="bg-white dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05] rounded-[2.5rem] overflow-hidden shadow-2xl hover:shadow-blue-500/20 transition-all duration-700 group flex flex-col hover:-translate-y-4"
-              >
-                {/* Header */}
-                <div className={`bg-gradient-to-br ${headerColor} p-8 relative overflow-hidden flex flex-col items-center justify-center text-center shadow-2xl`}>
-                  <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-                  <div className="absolute -right-6 -top-6 text-white/5 font-black text-8xl select-none group-hover:rotate-12 transition-transform duration-1000 ease-out">
-                    {sector.name.slice(0, 1)}
-                  </div>
-                  <div className="text-[11px] font-black text-white/80 uppercase tracking-[0.4em] mb-3 drop-shadow-xl z-10">{sector.name}</div>
-                  <div className="inline-flex items-center gap-3 px-5 py-2 bg-white/20 rounded-2xl text-[11px] font-black text-white backdrop-blur-xl border border-white/30 shadow-2xl z-10 scale-110">
-                    AVG <span className="text-sm border-b-2 border-white/50">{sector.avgScore}</span>
-                  </div>
-                </div>
+        {error ? (
+          <div className="mt-4 rounded-xl border border-error-200 bg-error-50 p-4 text-sm text-error-700 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-400">
+            {error}
+          </div>
+        ) : null}
 
-                {/* List */}
-                <div className="p-8 space-y-8 flex-1 bg-gradient-to-b from-transparent to-gray-50/30 dark:to-white/[0.01]">
-                  {sector.stocks.map((stock) => (
-                    <div key={stock.ticker} className="space-y-3 group/stock">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-black text-gray-900 dark:text-gray-100 group-hover/stock:text-blue-500 transition-colors uppercase tracking-[0.15em]">{stock.ticker}</span>
-                        <div className="flex items-center gap-2">
-                           <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg bg-gray-50 dark:bg-white/5 shadow-inner ${getScoreColor(stock.score)}`}>{stock.score}</span>
-                        </div>
-                      </div>
-                      <div className="h-3 bg-gray-100 dark:bg-white/[0.08] rounded-full overflow-hidden shadow-inner p-[2px] border border-gray-100 dark:border-white/[0.05]">
-                        <div
-                          className={`h-full transition-all duration-1000 ${getProgressBarColor(stock.score)} rounded-full shadow-2xl relative`}
-                          style={{ width: `${Math.min(100, Math.max(5, stock.score))}%` }}
-                        >
-                          <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-50" />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div className="rounded-xl bg-gray-50 p-4 dark:bg-white/[0.03]">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Sectors tracked</p>
+            <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{rankedRatings.length}</p>
+          </div>
+          <div className="rounded-xl bg-success-50 p-4 dark:bg-success-500/10">
+            <p className="text-xs font-medium text-success-700 dark:text-success-300">Strong sectors</p>
+            <p className="mt-1 text-2xl font-semibold text-success-800 dark:text-success-300">{strongCount}</p>
+          </div>
+          <div className="rounded-xl bg-brand-50 p-4 dark:bg-brand-500/10">
+            <p className="text-xs font-medium text-brand-700 dark:text-brand-300">Average score</p>
+            <p className="mt-1 text-2xl font-semibold text-brand-800 dark:text-brand-300">{average.toFixed(1)}</p>
+          </div>
+          <div className="rounded-xl bg-gray-50 p-4 dark:bg-white/[0.03]">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Leader / laggard</p>
+            <p className="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">
+              {leader?.name || "N/A"} / {laggard?.name || "N/A"}
+            </p>
+          </div>
         </div>
       </section>
 
-      <footer className="pt-20 border-t border-gray-100 dark:border-white/[0.05] flex flex-col lg:flex-row items-center justify-between gap-12 text-[10px] font-black uppercase tracking-[0.5em] text-gray-400">
-        <div className="flex items-center gap-4 group">
-          Validated Market Intel <a href="https://chungkhoancaykhe.vn/overview" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-400 underline underline-offset-8">chungkhoancaykhe.vn</a>
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="border-b border-gray-100 p-4 dark:border-white/[0.05]">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Sector ranking</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Sorted by strength index</p>
+          </div>
+          <div className="max-h-[620px] overflow-y-auto">
+            <table className="min-w-full">
+              <thead className="sticky top-0 z-10 border-b border-gray-100 bg-white dark:border-white/[0.05] dark:bg-gray-950">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Rank</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Sector</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Score</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                {rankedRatings.map((sector, index) => {
+                  const tone = getTone(sector.rating);
+                  return (
+                    <tr key={sector.name} className="hover:bg-gray-50 dark:hover:bg-white/[0.03]">
+                      <td className="px-4 py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">#{index + 1}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-gray-900 dark:text-white">{sector.name}</div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tone.badge}`}>
+                            {tone.label}
+                          </span>
+                          {sector.change !== undefined ? (
+                            <span
+                              className={`text-xs font-semibold ${
+                                sector.change > 0
+                                  ? "text-success-600 dark:text-success-400"
+                                  : sector.change < 0
+                                    ? "text-error-600 dark:text-error-400"
+                                    : "text-gray-400"
+                              }`}
+                            >
+                              {formatChange(sector.change)}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`inline-flex min-w-12 justify-center rounded-full px-3 py-1 text-sm font-semibold ${tone.badge}`}>
+                          {sector.rating}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div className="flex flex-wrap justify-center gap-8">
-           {["Very Strong", "Strong", "Fair", "Weak"].map((label, i) => (
-              <div key={label} className="flex items-center gap-4 group/leg cursor-help">
-                <span className={`h-3 w-3 rounded-full ring-8 ring-opacity-10 transition-transform group-hover/leg:scale-150 ${["bg-purple-600 ring-purple-600", "bg-green-600 ring-green-600", "bg-orange-500 ring-orange-500", "bg-blue-600 ring-blue-600"][i]}`} />
-                <span className="opacity-60 group-hover/leg:opacity-100 transition-opacity">{label}</span>
-              </div>
-           ))}
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Sector components</h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Showing {filteredDetailedSectors.length} of {detailedSectors.length} sectors
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[220px_150px]">
+              <input
+                type="text"
+                placeholder="Search sector or ticker"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                className="h-10 rounded-lg border border-gray-300 px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+              />
+              <select
+                value={strengthFilter}
+                onChange={(event) => setStrengthFilter(event.target.value as "ALL" | "STRONG" | "NEUTRAL" | "WEAK")}
+                className="h-10 rounded-lg border border-gray-300 px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+              >
+                <option value="ALL">All strength</option>
+                <option value="STRONG">Strong 50+</option>
+                <option value="NEUTRAL">Neutral 30-49</option>
+                <option value="WEAK">Weak below 30</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-4 max-h-[620px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+              {filteredDetailedSectors.map((sector) => {
+                const tone = getTone(sector.avgScore);
+                const topStocks = [...sector.stocks].sort((a, b) => b.score - a.score).slice(0, 8);
+
+                return (
+                  <article
+                    key={sector.name}
+                    className="rounded-xl border border-gray-200 p-4 transition-colors hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/[0.03]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h4 className="font-semibold text-gray-900 dark:text-white">{sector.name}</h4>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          {sector.stocks.length} stocks tracked
+                        </p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-sm font-semibold ${tone.badge}`}>
+                        {sector.avgScore}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+                      <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${Math.min(100, sector.avgScore)}%` }} />
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {topStocks.map((stock) => {
+                        const stockTone = getTone(stock.score);
+                        return (
+                          <div key={stock.ticker} className="grid grid-cols-[64px_1fr_42px] items-center gap-3">
+                            <span className="text-xs font-semibold text-gray-800 dark:text-white">{stock.ticker}</span>
+                            <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+                              <div
+                                className={`h-full rounded-full ${stockTone.bar}`}
+                                style={{ width: `${Math.min(100, Math.max(5, stock.score))}%` }}
+                              />
+                            </div>
+                            <span className="text-right text-xs font-semibold text-gray-600 dark:text-gray-300">{stock.score}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
         </div>
-      </footer>
+      </section>
     </div>
   );
 }

@@ -55,6 +55,10 @@ export interface StockRow {
   roe: number | null;
   marketCap: number | null;
   proprietaryTradeVolume: number | null;
+  ath: number | null;
+  athDate: string | null;
+  isAtATH: boolean;
+  athReachedWithin1Year: boolean;
   error?: string;
 }
 
