@@ -75,3 +75,4 @@ jobs:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: Production
           package: .
+          startup-command: node server.js
