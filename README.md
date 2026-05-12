@@ -74,6 +74,19 @@ git clone https://github.com/TailAdmin/free-nextjs-admin-dashboard.git
    yarn dev
    ```
 
+## Azure CI/CD
+
+This repository includes a GitHub Actions workflow at `.github/workflows/azure-webapp.yml` that builds the Next.js standalone server and deploys it to Azure App Service when `main` is pushed.
+
+Add these repository secrets in GitHub before deploying:
+
+```bash
+AZURE_WEBAPP_NAME=<your-azure-app-service-name>
+AZURE_WEBAPP_PUBLISH_PROFILE=<downloaded-publish-profile-xml>
+```
+
+The workflow deploys a standalone Next.js package with `npm start` mapped to `node server.js`, so Azure can start the app without running `next start`.
+
 ## Components
 
 TailAdmin is a pre-designed starting point for building a web-based dashboard using Next.js and Tailwind CSS. The template includes:
