@@ -24,7 +24,6 @@ const navItems: NavItem[] = [
     subItems: [
       { name: "Dashboard", path: "/stocks", pro: false },
       { name: "Technical Ratings", path: "/stock-ratings", pro: false, new: true },
-      { name: "ATH Stocks", path: "/ath-stocks", pro: false, new: true },
     ],
   },
 ];
