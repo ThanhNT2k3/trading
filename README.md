@@ -76,13 +76,14 @@ git clone https://github.com/TailAdmin/free-nextjs-admin-dashboard.git
 
 ## Azure CI/CD
 
-This repository includes a GitHub Actions workflow at `.github/workflows/azure-webapp.yml` that builds the Next.js standalone server and deploys it to Azure App Service when `main` is pushed.
+This repository includes a GitHub Actions workflow at `.github/workflows/main_vn2000.yml` that builds the Next.js standalone server and deploys it to the `vn2000` Azure App Service when `main` is pushed.
 
-Add these repository secrets in GitHub before deploying:
+Azure Deployment Center created these repository secrets for OIDC deployment:
 
 ```bash
-AZURE_WEBAPP_NAME=<your-azure-app-service-name>
-AZURE_WEBAPP_PUBLISH_PROFILE=<downloaded-publish-profile-xml>
+AZUREAPPSERVICE_CLIENTID_32EFABAC80624C04B9C0DEEE9952D38A
+AZUREAPPSERVICE_TENANTID_77256B4A3FF14823B8EAD351B55FA864
+AZUREAPPSERVICE_SUBSCRIPTIONID_C70B9061D2A84C9AA289E27944C16387
 ```
 
 The workflow deploys a standalone Next.js package with `npm start` mapped to `node server.js`, so Azure can start the app without running `next start`.
