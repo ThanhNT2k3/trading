@@ -45,6 +45,7 @@ jobs:
         with:
           name: nextjs-standalone
           path: .next/standalone
+          include-hidden-files: true
 
   deploy:
     name: Deploy to Azure Web App
