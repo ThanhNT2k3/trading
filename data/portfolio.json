@@ -111,12 +111,12 @@
     {
       "id": "hld-300ebfaa-4560-4ea0-a75c-ceeab0008199",
       "type": "fund",
-      "symbol": "VCBFBCF",
+      "symbol": "VCBF-BCF",
       "name": "VCBFBCF",
       "category": "Quy dau tu",
       "quantity": 926.62,
       "averageCost": 43.693,
-      "currentPrice": 43.693,
+      "currentPrice": 44496,
       "currency": "VND",
       "notes": ""
     },
@@ -192,7 +192,7 @@
       "id": "snap-hld-300ebfaa-4560-4ea0-a75c-ceeab0008199-2026-05-13",
       "holdingId": "hld-300ebfaa-4560-4ea0-a75c-ceeab0008199",
       "date": "2026-05-13",
-      "closePrice": 43.693
+      "closePrice": 44496
     },
     {
       "id": "snap-hld-049a804a-165b-412f-9b61-788980a1f2ca-2026-05-13",
@@ -201,5 +201,5 @@
       "closePrice": 105861
     }
   ],
-  "updatedAt": "2026-05-13T14:31:07.672Z"
+  "updatedAt": "2026-05-13T15:28:24.820Z"
 }
