@@ -1,0 +1,49 @@
+name: Portfolio Daily Report
+
+on:
+  schedule:
+    # 23:05 UTC is 06:05 Asia/Ho_Chi_Minh the next morning.
+    - cron: "5 23 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  send-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Send portfolio report
+        env:
+          PORTFOLIO_REPORT_URL: ${{ vars.PORTFOLIO_REPORT_URL }}
+          PORTFOLIO_REPORT_SECRET: ${{ secrets.PORTFOLIO_REPORT_SECRET }}
+        run: |
+          set -euo pipefail
+
+          REPORT_URL="${PORTFOLIO_REPORT_URL:-https://vn2500.azurewebsites.net/api/portfolio/daily-report}"
+
+          if [ -z "${PORTFOLIO_REPORT_SECRET:-}" ]; then
+            echo "PORTFOLIO_REPORT_SECRET is not configured in GitHub Secrets." >&2
+            exit 1
+          fi
+
+          for attempt in 1 2 3; do
+            status="$(
+              curl --silent --show-error --output /tmp/portfolio-report-response.json \
+                --write-out "%{http_code}" \
+                --max-time 180 \
+                --retry 2 \
+                --retry-delay 10 \
+                --header "Authorization: Bearer ${PORTFOLIO_REPORT_SECRET}" \
+                "${REPORT_URL}"
+            )"
+
+            if [ "$status" = "200" ]; then
+              cat /tmp/portfolio-report-response.json
+              exit 0
+            fi
+
+            echo "Attempt ${attempt} failed with HTTP ${status}" >&2
+            cat /tmp/portfolio-report-response.json >&2 || true
+            sleep 30
+          done
+
+          exit 1
