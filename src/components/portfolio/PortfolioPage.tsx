@@ -57,6 +57,14 @@ type DailyPortfolioRow = {
   categorySummary: string;
 };
 
+type CategoryMovementRow = {
+  category: string;
+  count: number;
+  marketValue: number;
+  dailyProfitLoss: number;
+  dailyProfitLossPercent: number;
+};
+
 const blankHolding: HoldingFormState = {
   id: "",
   symbol: "",
@@ -347,7 +355,11 @@ export default function PortfolioPage() {
         };
       })
       .filter((row): row is NonNullable<typeof row> => row !== null)
-      .sort((a, b) => Math.abs(b.dailyProfitLoss) - Math.abs(a.dailyProfitLoss));
+      .sort((a, b) => {
+        const categoryCompare = a.holding.category.localeCompare(b.holding.category, "vi");
+        if (categoryCompare !== 0) return categoryCompare;
+        return Math.abs(b.dailyProfitLoss) - Math.abs(a.dailyProfitLoss);
+      });
   }, [fundNavBySymbol, portfolio.holdings, stockPriceBySymbol]);
 
   const todayMovementSummary = useMemo(() => {
@@ -362,6 +374,54 @@ export default function PortfolioPage() {
 
     return { total, up, down, largestMove };
   }, [todayMovements]);
+
+  const categoryMovements = useMemo<CategoryMovementRow[]>(() => {
+    const movementByCategory = new Map<string, CategoryMovementRow>();
+
+    todayMovements.forEach((row) => {
+      const category = row.holding.category || "Uncategorized";
+      const current = movementByCategory.get(category) ?? {
+        category,
+        count: 0,
+        marketValue: 0,
+        dailyProfitLoss: 0,
+        dailyProfitLossPercent: 0,
+      };
+
+      current.count += 1;
+      current.marketValue += row.marketValue;
+      current.dailyProfitLoss += row.dailyProfitLoss;
+      movementByCategory.set(category, current);
+    });
+
+    return Array.from(movementByCategory.values())
+      .map((row) => {
+        const previousValue = row.marketValue - row.dailyProfitLoss;
+        return {
+          ...row,
+          dailyProfitLossPercent:
+            previousValue === 0 ? 0 : (row.dailyProfitLoss / previousValue) * 100,
+        };
+      })
+      .sort((a, b) => Math.abs(b.dailyProfitLoss) - Math.abs(a.dailyProfitLoss));
+  }, [todayMovements]);
+
+  const groupedTodayMovements = useMemo(() => {
+    const groups = new Map<string, typeof todayMovements>();
+
+    todayMovements.forEach((row) => {
+      const category = row.holding.category || "Uncategorized";
+      groups.set(category, [...(groups.get(category) ?? []), row]);
+    });
+
+    return Array.from(groups.entries()).map(([category, rows]) => ({
+      category,
+      rows,
+      dailyProfitLoss: rows.reduce((sum, row) => sum + row.dailyProfitLoss, 0),
+      marketValue: rows.reduce((sum, row) => sum + row.marketValue, 0),
+    }));
+  }, [todayMovements]);
+
 
   const weeklyFundPlanSummary = useMemo(() => {
     return {
@@ -419,27 +479,32 @@ export default function PortfolioPage() {
       );
     });
 
+    const findSnapshotAtOrBefore = (holdingId: string, date: string) => {
+      const holdingSnapshots = snapshotsByHolding.get(holdingId) ?? [];
+      return [...holdingSnapshots].reverse().find((item) => item.date <= date) ?? null;
+    };
+
+    const findSnapshotBefore = (holdingId: string, date: string) => {
+      const holdingSnapshots = snapshotsByHolding.get(holdingId) ?? [];
+      return [...holdingSnapshots].reverse().find((item) => item.date < date) ?? null;
+    };
+
     return Array.from(snapshotsByDate.keys())
       .sort((a, b) => b.localeCompare(a))
       .map((date) => {
-        const snapshots = snapshotsByDate.get(date) ?? [];
         const categoryMap = new Map<string, number>();
         let totalCost = 0;
         let marketValue = 0;
         let dailyProfitLoss = 0;
         let previousMarketValue = 0;
 
-        snapshots.forEach((snapshot) => {
-          const holding = holdingById.get(snapshot.holdingId);
-          if (!holding) return;
-
+        livePortfolio.holdings.forEach((holding) => {
+          const snapshot = findSnapshotAtOrBefore(holding.id, date);
+          if (!snapshot) return;
           const priceUnit = priceUnitForHolding(holding);
           const value = snapshot.closePrice * priceUnit * holding.quantity;
           const cost = holding.averageCost * priceUnit * holding.quantity;
-          const holdingSnapshots = snapshotsByHolding.get(snapshot.holdingId) ?? [];
-          const previousSnapshot = [...holdingSnapshots]
-            .reverse()
-            .find((item) => item.date < date);
+          const previousSnapshot = findSnapshotBefore(holding.id, date);
           const previousValue = previousSnapshot
             ? previousSnapshot.closePrice * priceUnit * holding.quantity
             : value;
@@ -929,8 +994,8 @@ export default function PortfolioPage() {
             helper={`${todayMovements.length} matched holdings`}
             tone={todayMovementSummary.total >= 0 ? "good" : "bad"}
           />
-          <StatCard label="Up" value={String(todayMovementSummary.up)} helper="Funds positive" tone="good" />
-          <StatCard label="Down" value={String(todayMovementSummary.down)} helper="Funds negative" tone="bad" />
+          <StatCard label="Up" value={String(todayMovementSummary.up)} helper="Holdings positive" tone="good" />
+          <StatCard label="Down" value={String(todayMovementSummary.down)} helper="Holdings negative" tone="bad" />
           <StatCard
             label="Largest move"
             value={todayMovementSummary.largestMove?.holding.symbol ?? "-"}
@@ -941,6 +1006,58 @@ export default function PortfolioPage() {
             }
             tone={(todayMovementSummary.largestMove?.dailyProfitLoss ?? 0) >= 0 ? "good" : "bad"}
           />
+        </div>
+
+        <div className="mt-5 overflow-x-auto">
+          {categoryMovements.length === 0 ? null : (
+            <table className="min-w-full divide-y divide-gray-100 text-sm dark:divide-gray-800">
+              <thead>
+                <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  <th className="px-3 py-3">Category</th>
+                  <th className="px-3 py-3 text-right">Holdings</th>
+                  <th className="px-3 py-3 text-right">Value</th>
+                  <th className="px-3 py-3 text-right">Today P/L</th>
+                  <th className="px-3 py-3">Chart</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {categoryMovements.map((row) => {
+                  const maxMove = Math.max(
+                    ...categoryMovements.map((item) => Math.abs(item.dailyProfitLoss)),
+                    1,
+                  );
+                  const width = Math.max((Math.abs(row.dailyProfitLoss) / maxMove) * 100, 4);
+                  const isPositive = row.dailyProfitLoss >= 0;
+
+                  return (
+                    <tr key={row.category} className="text-gray-700 dark:text-gray-300">
+                      <td className="px-3 py-4">
+                        <div className="font-medium text-gray-900 dark:text-white">
+                          {row.category}
+                        </div>
+                      </td>
+                      <td className="px-3 py-4 text-right">{row.count}</td>
+                      <td className="px-3 py-4 text-right">{formatCurrency(row.marketValue)}</td>
+                      <td className="px-3 py-4 text-right">
+                        <ProfitBadge
+                          value={row.dailyProfitLoss}
+                          percent={row.dailyProfitLossPercent}
+                        />
+                      </td>
+                      <td className="min-w-36 px-3 py-4">
+                        <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800">
+                          <div
+                            className={`h-2 rounded-full ${isPositive ? "bg-success-500" : "bg-error-500"}`}
+                            style={{ width: `${width}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
 
         <div className="mt-5 overflow-x-auto">
@@ -973,43 +1090,54 @@ export default function PortfolioPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {todayMovements.map((row) => {
+                {groupedTodayMovements.flatMap((group) => {
                   const maxMove = Math.max(
                     ...todayMovements.map((item) => Math.abs(item.dailyProfitLoss)),
                     1,
                   );
-                  const width = Math.max((Math.abs(row.dailyProfitLoss) / maxMove) * 100, 4);
-                  const isPositive = row.dailyProfitLoss >= 0;
 
-                  return (
-                    <tr key={row.holding.id} className="text-gray-700 dark:text-gray-300">
-                      <td className="px-3 py-4">
-                        <div className="font-medium text-gray-900 dark:text-white">
-                          {row.holding.symbol}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {row.holding.category}
-                        </div>
+                  return [
+                    <tr key={`category-${group.category}`} className="bg-gray-50 dark:bg-white/[0.03]">
+                      <td colSpan={5} className="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                        {group.category} · {group.rows.length} holdings · {formatCurrency(group.marketValue)}
                       </td>
-                      <td className="px-3 py-4">{row.price.latestDate}</td>
-                      <td className="px-3 py-4 text-right">{formatNumber(row.holding.quantity)}</td>
-                      <td className="px-3 py-4 text-right">{formatCurrency(row.price.latestPrice)}</td>
-                      <td className="px-3 py-4 text-right">
-                        <FundNavBadge value={row.price.change} percent={row.price.changePercent} />
+                      <td className="px-3 py-3 text-right">
+                        <ProfitBadge value={group.dailyProfitLoss} />
                       </td>
-                      <td className="px-3 py-4 text-right">
-                        <ProfitBadge value={row.dailyProfitLoss} />
-                      </td>
-                      <td className="min-w-36 px-3 py-4">
-                        <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800">
-                          <div
-                            className={`h-2 rounded-full ${isPositive ? "bg-success-500" : "bg-error-500"}`}
-                            style={{ width: `${width}%` }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  );
+                      <td />
+                    </tr>,
+                    ...group.rows.map((row) => {
+                      const width = Math.max((Math.abs(row.dailyProfitLoss) / maxMove) * 100, 4);
+                      const isPositive = row.dailyProfitLoss >= 0;
+
+                      return (
+                        <tr key={row.holding.id} className="text-gray-700 dark:text-gray-300">
+                          <td className="px-3 py-4">
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {row.holding.symbol}
+                            </div>
+                          </td>
+                          <td className="px-3 py-4">{row.price.latestDate}</td>
+                          <td className="px-3 py-4 text-right">{formatNumber(row.holding.quantity)}</td>
+                          <td className="px-3 py-4 text-right">{formatCurrency(row.price.latestPrice)}</td>
+                          <td className="px-3 py-4 text-right">
+                            <FundNavBadge value={row.price.change} percent={row.price.changePercent} />
+                          </td>
+                          <td className="px-3 py-4 text-right">
+                            <ProfitBadge value={row.dailyProfitLoss} />
+                          </td>
+                          <td className="min-w-36 px-3 py-4">
+                            <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800">
+                              <div
+                                className={`h-2 rounded-full ${isPositive ? "bg-success-500" : "bg-error-500"}`}
+                                style={{ width: `${width}%` }}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }),
+                  ];
                 })}
               </tbody>
             </table>
