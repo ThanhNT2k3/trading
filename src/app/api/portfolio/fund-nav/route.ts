@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { fetchFundMarketData } from "@/lib/portfolio/market-data";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const { funds, weeklyPlan } = await fetchFundMarketData();

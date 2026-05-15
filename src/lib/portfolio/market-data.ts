@@ -29,6 +29,35 @@ function parseNumber(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseSheetDate(value: string | undefined) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!slashMatch) return null;
+
+  const day = Number(slashMatch[1]);
+  const month = Number(slashMatch[2]);
+  const year = Number(slashMatch[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function toSheetIsoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
 function parseFundSymbol(header: string) {
   return header.replace(/^Gia\s+/i, "").replace(/^Giá\s+/i, "").trim().toUpperCase();
 }
@@ -38,8 +67,8 @@ function normalizeSymbol(symbol: string) {
 }
 
 function isMonday(dateValue: string | undefined) {
-  if (!dateValue) return false;
-  return new Date(`${dateValue}T00:00:00`).getDay() === 1;
+  const parsed = parseSheetDate(dateValue);
+  return parsed ? parsed.getUTCDay() === 1 : false;
 }
 
 function toDateInput(date: Date) {
@@ -67,24 +96,35 @@ function buildFundNavRows(values: string[][]): FundNavRow[] {
 
   return headers.slice(1).flatMap((header, headerIndex) => {
     const columnIndex = headerIndex + 1;
-    const latest = rows.find((row) => parseNumber(row[columnIndex]) !== null);
+    const points = rows
+      .map((row) => {
+        const nav = parseNumber(row[columnIndex]);
+        const date = parseSheetDate(row[0]);
+        if (nav === null || !date) return null;
+        return {
+          date,
+          dateLabel: toSheetIsoDate(date),
+          nav,
+        };
+      })
+      .filter((point): point is NonNullable<typeof point> => point !== null)
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    const latest = points[0];
     if (!latest) return [];
 
-    const previous = rows.find(
-      (row) => row !== latest && parseNumber(row[columnIndex]) !== null,
-    );
-    const latestNav = parseNumber(latest[columnIndex]);
-    const previousNav = parseNumber(previous?.[columnIndex]);
-    if (latestNav === null) return [];
+    const previous = points[1];
+    const latestNav = latest.nav;
+    const previousNav = previous?.nav ?? null;
 
     const change = previousNav === null ? 0 : latestNav - previousNav;
 
     return [
       {
         symbol: parseFundSymbol(header),
-        latestDate: latest[0],
+        latestDate: latest.dateLabel,
         latestNav,
-        previousDate: previous?.[0] ?? null,
+        previousDate: previous?.dateLabel ?? null,
         previousNav,
         change,
         changePercent: previousNav === null || previousNav === 0 ? 0 : (change / previousNav) * 100,
@@ -119,16 +159,29 @@ function buildWeeklyPlanRows(values: string[][]): WeeklyFundPlanRow[] {
       };
     }
 
-    const executionRow = rows.find(
-      (row) => isMonday(row[0]) && parseNumber(row[column.columnIndex]) !== null,
-    );
-    const nav = parseNumber(executionRow?.[column.columnIndex]);
+    const mondayRows = rows
+      .map((row) => {
+        const date = parseSheetDate(row[0]);
+        const nav = parseNumber(row[column.columnIndex]);
+        if (!date || nav === null) return null;
+        return {
+          date,
+          dateLabel: toSheetIsoDate(date),
+          nav,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+      .filter((row) => isMonday(row.dateLabel))
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    const executionRow = mondayRows[0];
+    const nav = executionRow?.nav ?? null;
 
     return {
       symbol: column.symbol,
       inputSymbol: plan.inputSymbol,
       amount: plan.amount,
-      executionDate: executionRow?.[0] ?? null,
+      executionDate: executionRow?.dateLabel ?? null,
       nav,
       estimatedUnits: nav && nav > 0 ? plan.amount / nav : 0,
     };
@@ -136,9 +189,7 @@ function buildWeeklyPlanRows(values: string[][]): WeeklyFundPlanRow[] {
 }
 
 export async function fetchFundMarketData(): Promise<FundMarketData> {
-  const response = await fetch(SHEET_URL, {
-    next: { revalidate: 900 },
-  });
+  const response = await fetch(SHEET_URL, { cache: "no-store" });
 
   if (!response.ok) {
     throw new Error(`Cannot load fund NAV sheet: ${response.status}`);

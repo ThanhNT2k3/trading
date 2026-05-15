@@ -1,6 +1,6 @@
 "use client";
 
-import React, { FormEvent, useEffect, useMemo, useState } from "react";
+import React, { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import {
   ArrowDownIcon,
@@ -20,7 +20,7 @@ import type {
   StockPriceRow,
   WeeklyFundPlanRow,
 } from "@/lib/portfolio";
-import { summarizePortfolio } from "@/lib/portfolio";
+import { normalizePortfolioData, summarizePortfolio } from "@/lib/portfolio";
 
 type PortfolioResponse = {
   portfolio: PortfolioData;
@@ -80,6 +80,7 @@ const defaultPortfolio: PortfolioData = {
 };
 
 const defaultCategories = ["Co phieu", "Quy dau tu", "ETF", "Trai phieu", "Tien mat", "Crypto", "Khac"];
+const LOCAL_PORTFOLIO_STORAGE_KEY = "portfolio-data-v1";
 
 function createId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -87,6 +88,50 @@ function createId(prefix: string) {
   }
 
   return `${prefix}-${Date.now().toString(36)}`;
+}
+
+function normalizeMarketSymbol(symbol: string) {
+  return symbol.replace(/[^A-Z0-9]/g, "").toUpperCase();
+}
+
+function readBrowserPortfolio() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(LOCAL_PORTFOLIO_STORAGE_KEY);
+    if (!raw) return null;
+    return normalizePortfolioData(JSON.parse(raw) as Partial<PortfolioData>);
+  } catch {
+    return null;
+  }
+}
+
+function saveBrowserPortfolio(portfolio: PortfolioData) {
+  if (typeof window === "undefined") return false;
+
+  try {
+    window.localStorage.setItem(LOCAL_PORTFOLIO_STORAGE_KEY, JSON.stringify(portfolio));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getNewestPortfolio(serverPortfolio: PortfolioData, browserPortfolio: PortfolioData | null) {
+  if (!browserPortfolio) return serverPortfolio;
+
+  const serverUpdatedAt = new Date(serverPortfolio.updatedAt).getTime();
+  const browserUpdatedAt = new Date(browserPortfolio.updatedAt).getTime();
+  return browserUpdatedAt > serverUpdatedAt ? browserPortfolio : serverPortfolio;
+}
+
+async function getPortfolioError(response: Response) {
+  try {
+    const data = (await response.json()) as { error?: string; details?: string };
+    return data.details || data.error || "Cannot save portfolio data";
+  } catch {
+    return "Cannot save portfolio data";
+  }
 }
 
 function formatCurrency(value: number, currency = "VND") {
@@ -137,7 +182,8 @@ function getMarketPrice(
   stockPriceBySymbol: Map<string, StockPriceRow>,
 ) {
   const normalizedSymbol = symbol.toUpperCase();
-  const fundNav = fundNavBySymbol.get(normalizedSymbol);
+  const marketSymbol = normalizeMarketSymbol(symbol);
+  const fundNav = fundNavBySymbol.get(normalizedSymbol) ?? fundNavBySymbol.get(marketSymbol);
   if (fundNav) {
     return {
       source: "fund" as const,
@@ -150,7 +196,7 @@ function getMarketPrice(
     };
   }
 
-  const stockPrice = stockPriceBySymbol.get(normalizedSymbol);
+  const stockPrice = stockPriceBySymbol.get(normalizedSymbol) ?? stockPriceBySymbol.get(marketSymbol);
   if (stockPrice) {
     return {
       source: "stock" as const,
@@ -173,7 +219,7 @@ function toHolding(
 ): PortfolioHolding {
   const symbol = state.symbol.trim().toUpperCase();
   const averageCost = Number(state.averageCost);
-  const fundNav = fundNavBySymbol.get(symbol);
+  const fundNav = fundNavBySymbol.get(symbol) ?? fundNavBySymbol.get(normalizeMarketSymbol(symbol));
 
   return {
     id: existing?.id || state.id || createId("hld"),
@@ -280,11 +326,21 @@ export default function PortfolioPage() {
   }, [portfolio.holdings]);
 
   const fundNavBySymbol = useMemo(() => {
-    return new Map(fundNavRows.map((row) => [row.symbol, row]));
+    return new Map(
+      fundNavRows.flatMap((row) => [
+        [row.symbol.toUpperCase(), row] as const,
+        [normalizeMarketSymbol(row.symbol), row] as const,
+      ]),
+    );
   }, [fundNavRows]);
 
   const stockPriceBySymbol = useMemo(() => {
-    return new Map(stockPriceRows.map((row) => [row.symbol, row]));
+    return new Map(
+      stockPriceRows.flatMap((row) => [
+        [row.symbol.toUpperCase(), row] as const,
+        [normalizeMarketSymbol(row.symbol), row] as const,
+      ]),
+    );
   }, [stockPriceRows]);
 
   const livePortfolio = useMemo<PortfolioData>(() => {
@@ -331,11 +387,16 @@ export default function PortfolioPage() {
   const liveSummary = useMemo(() => summarizePortfolio(livePortfolio), [livePortfolio]);
 
   const stockSymbols = useMemo(() => {
-    return portfolio.holdings
-      .filter((holding) => !fundNavBySymbol.has(holding.symbol.toUpperCase()))
-      .map((holding) => holding.symbol.toUpperCase())
-      .filter(Boolean);
+    return Array.from(
+      new Set(
+        portfolio.holdings
+          .filter((holding) => !fundNavBySymbol.has(normalizeMarketSymbol(holding.symbol)))
+          .map((holding) => holding.symbol.toUpperCase())
+          .filter(Boolean),
+      ),
+    );
   }, [fundNavBySymbol, portfolio.holdings]);
+  const stockSymbolsKey = useMemo(() => stockSymbols.join(","), [stockSymbols]);
 
   const todayMovements = useMemo(() => {
     return portfolio.holdings
@@ -434,7 +495,6 @@ export default function PortfolioPage() {
   }, [weeklyFundPlan]);
 
   const dailyPortfolioRows = useMemo<DailyPortfolioRow[]>(() => {
-    const holdingById = new Map(livePortfolio.holdings.map((holding) => [holding.id, holding]));
     const snapshotsByDate = new Map<string, PortfolioSnapshot[]>();
     const snapshotsByHolding = new Map<string, PortfolioSnapshot[]>();
 
@@ -537,22 +597,28 @@ export default function PortfolioPage() {
       });
   }, [livePortfolio]);
 
-  const loadPortfolio = async () => {
+  const loadPortfolio = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
       const response = await fetch("/api/portfolio", { cache: "no-store" });
       if (!response.ok) throw new Error("Cannot load portfolio data");
       const data = (await response.json()) as PortfolioResponse;
-      setPortfolio(data.portfolio);
+      setPortfolio(getNewestPortfolio(data.portfolio, readBrowserPortfolio()));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unexpected loading error");
+      const browserPortfolio = readBrowserPortfolio();
+      if (browserPortfolio) {
+        setPortfolio(browserPortfolio);
+        setSuccessMessage("Loaded saved portfolio from this browser.");
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : "Unexpected loading error");
+      }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const loadFundNav = async () => {
+  const loadFundNav = useCallback(async () => {
     setIsLoadingFundNav(true);
     setErrorMessage(null);
     try {
@@ -561,17 +627,19 @@ export default function PortfolioPage() {
       const data = (await response.json()) as FundNavResponse;
       setFundNavRows(data.funds);
       setWeeklyFundPlan(data.weeklyPlan ?? []);
+      return data.funds;
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unexpected fund NAV error");
+      return [];
     } finally {
       setIsLoadingFundNav(false);
     }
-  };
+  }, []);
 
-  const loadStockPrices = async (symbols: string[]) => {
+  const loadStockPrices = useCallback(async (symbols: string[]) => {
     if (symbols.length === 0) {
       setStockPriceRows([]);
-      return;
+      return [];
     }
 
     setIsLoadingStockPrices(true);
@@ -584,23 +652,30 @@ export default function PortfolioPage() {
       if (!response.ok) throw new Error("Cannot load stock prices");
       const data = (await response.json()) as StockPricesResponse;
       setStockPriceRows(data.prices);
+      return data.prices;
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unexpected stock price error");
+      return [];
     } finally {
       setIsLoadingStockPrices(false);
     }
-  };
-
-  useEffect(() => {
-    loadPortfolio();
-    loadFundNav();
   }, []);
 
   useEffect(() => {
-    loadStockPrices(stockSymbols);
-  }, [stockSymbols.join(",")]);
+    void loadPortfolio();
+    void loadFundNav();
+  }, [loadFundNav, loadPortfolio]);
+
+  useEffect(() => {
+    void loadStockPrices(stockSymbolsKey ? stockSymbolsKey.split(",") : []);
+  }, [loadStockPrices, stockSymbolsKey]);
 
   const savePortfolio = async (nextPortfolio: PortfolioData, message: string) => {
+    const portfolioToSave = {
+      ...nextPortfolio,
+      updatedAt: new Date().toISOString(),
+    };
+
     setIsSaving(true);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -608,14 +683,21 @@ export default function PortfolioPage() {
       const response = await fetch("/api/portfolio", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(nextPortfolio),
+        body: JSON.stringify(portfolioToSave),
       });
-      if (!response.ok) throw new Error("Cannot save portfolio data");
+      if (!response.ok) throw new Error(await getPortfolioError(response));
       const data = (await response.json()) as PortfolioResponse;
       setPortfolio(data.portfolio);
+      saveBrowserPortfolio(data.portfolio);
       setSuccessMessage(message);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unexpected saving error");
+      if (saveBrowserPortfolio(portfolioToSave)) {
+        setPortfolio(portfolioToSave);
+        const reason = error instanceof Error ? error.message : "server file save is unavailable";
+        setSuccessMessage(`${message} Saved in this browser because ${reason}.`);
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : "Unexpected saving error");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -626,7 +708,12 @@ export default function PortfolioPage() {
     const existing = portfolio.holdings.find((item) => item.id === holdingForm.id);
     const holding = toHolding(holdingForm, existing, fundNavBySymbol);
 
-    if (!holding.symbol || holding.quantity < 0 || !Number.isFinite(holding.averageCost)) {
+    if (
+      !holding.symbol ||
+      !Number.isFinite(holding.quantity) ||
+      holding.quantity < 0 ||
+      !Number.isFinite(holding.averageCost)
+    ) {
       setErrorMessage("Please enter symbol, quantity, and a valid average cost.");
       return;
     }
@@ -635,7 +722,8 @@ export default function PortfolioPage() {
     const nextHoldings = exists
       ? portfolio.holdings.map((item) => (item.id === holding.id ? holding : item))
       : [...portfolio.holdings, holding];
-    const snapshotDate = fundNavBySymbol.get(holding.symbol)?.latestDate ?? today();
+    const snapshotDate =
+      getMarketPrice(holding.symbol, fundNavBySymbol, stockPriceBySymbol)?.latestDate ?? today();
     const nextSnapshot: PortfolioSnapshot = {
       id: `snap-${holding.id}-${snapshotDate}`,
       holdingId: holding.id,
@@ -670,9 +758,13 @@ export default function PortfolioPage() {
   };
 
   const applyMarketPrices = async (targetSymbol?: string) => {
+    const targetMarketSymbol = targetSymbol ? normalizeMarketSymbol(targetSymbol) : null;
     const eligibleHoldings = portfolio.holdings.filter((holding) => {
-      const symbol = holding.symbol.toUpperCase();
-      return getMarketPrice(symbol, fundNavBySymbol, stockPriceBySymbol) && (!targetSymbol || symbol === targetSymbol);
+      const symbol = normalizeMarketSymbol(holding.symbol);
+      return (
+        getMarketPrice(symbol, fundNavBySymbol, stockPriceBySymbol) &&
+        (!targetMarketSymbol || symbol === targetMarketSymbol)
+      );
     });
 
     if (eligibleHoldings.length === 0) {
@@ -681,9 +773,9 @@ export default function PortfolioPage() {
     }
 
     const nextHoldings = portfolio.holdings.map((holding) => {
-      const symbol = holding.symbol.toUpperCase();
+      const symbol = normalizeMarketSymbol(holding.symbol);
       const price = getMarketPrice(symbol, fundNavBySymbol, stockPriceBySymbol);
-      if (!price || (targetSymbol && symbol !== targetSymbol)) {
+      if (!price || (targetMarketSymbol && symbol !== targetMarketSymbol)) {
         return holding;
       }
       return { ...holding, type: price.source, currentPrice: price.latestPrice };
@@ -725,9 +817,20 @@ export default function PortfolioPage() {
     );
   };
 
-  const refreshMarketPrices = () => {
-    loadFundNav();
-    loadStockPrices(stockSymbols);
+  const refreshMarketPrices = async () => {
+    setSuccessMessage(null);
+    const nextFundRows = await loadFundNav();
+    const nextFundSymbols = new Set(nextFundRows.map((row) => normalizeMarketSymbol(row.symbol)));
+    const nextStockSymbols = Array.from(
+      new Set(
+        portfolio.holdings
+          .filter((holding) => !nextFundSymbols.has(normalizeMarketSymbol(holding.symbol)))
+          .map((holding) => holding.symbol.toUpperCase())
+          .filter(Boolean),
+      ),
+    );
+    await loadStockPrices(nextStockSymbols);
+    setSuccessMessage("Market prices refreshed.");
   };
 
   const applyWeeklyFundPlan = async () => {
@@ -745,7 +848,7 @@ export default function PortfolioPage() {
 
     executableRows.forEach((row) => {
       const existingIndex = nextHoldings.findIndex(
-        (holding) => holding.symbol.toUpperCase() === row.symbol.toUpperCase(),
+        (holding) => normalizeMarketSymbol(holding.symbol) === normalizeMarketSymbol(row.symbol),
       );
 
       if (existingIndex >= 0) {
@@ -783,7 +886,7 @@ export default function PortfolioPage() {
 
     executableRows.forEach((row) => {
       const holding = nextHoldings.find(
-        (item) => item.symbol.toUpperCase() === row.symbol.toUpperCase(),
+        (item) => normalizeMarketSymbol(item.symbol) === normalizeMarketSymbol(row.symbol),
       );
       if (!holding || !row.executionDate || row.nav === null) return;
 
@@ -978,7 +1081,12 @@ export default function PortfolioPage() {
             <button
               type="button"
               onClick={() => applyMarketPrices()}
-              disabled={isSaving || todayMovements.length === 0}
+              disabled={
+                isSaving ||
+                isLoadingFundNav ||
+                isLoadingStockPrices ||
+                todayMovements.length === 0
+              }
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
             >
               <CheckCircleIcon className="h-4 w-4" />

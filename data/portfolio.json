@@ -6,7 +6,7 @@
       "symbol": "ACB",
       "name": "ACB",
       "category": "Co phieu",
-      "quantity": 2000,
+      "quantity": 1000,
       "averageCost": 22.73,
       "currentPrice": 22.8,
       "currency": "VND",
@@ -265,7 +265,13 @@
       "holdingId": "hld-049a804a-165b-412f-9b61-788980a1f2ca",
       "date": "2026-05-12",
       "closePrice": 105322
+    },
+    {
+      "id": "snap-hld-d606437c-bd9e-45fe-8b9b-47380c0cb353-2026-05-15",
+      "holdingId": "hld-d606437c-bd9e-45fe-8b9b-47380c0cb353",
+      "date": "2026-05-15",
+      "closePrice": 22.8
     }
   ],
-  "updatedAt": "2026-05-14T13:05:54.096Z"
+  "updatedAt": "2026-05-15T16:14:39.351Z"
 }
