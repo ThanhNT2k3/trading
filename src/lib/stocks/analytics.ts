@@ -1,5 +1,6 @@
 import {
   BreadthMetrics,
+  BreadthRegimeSignal,
   DailyAggregateRow,
   MarketOverviewItem,
   MovingAverageMetrics,
@@ -204,6 +205,155 @@ export function computeBreadthMetrics(rows: StockRow[]): BreadthMetrics {
     lowCount,
     hlRatio: lowCount > 0 ? highCount / lowCount : highCount > 0 ? highCount : null,
     hlIsEstimated: complete52wRows !== rows.length,
+  };
+}
+
+function pctOfTotal(count: number, total: number): number | null {
+  return total > 0 ? (count / total) * 100 : null;
+}
+
+function changeBetween(current: number | null, previous: number | null): number | null {
+  return current !== null && previous !== null ? current - previous : null;
+}
+
+function getDailyRowAtOffset(rows: DailyAggregateRow[], offset: number): DailyAggregateRow | null {
+  return rows.length > offset ? rows[offset] : null;
+}
+
+export function computeBreadthRegimeSignal(
+  dailyRows: DailyAggregateRow[],
+  currentRows: StockRow[],
+): BreadthRegimeSignal {
+  const current = getDailyRowAtOffset(dailyRows, 0);
+  const fiveDaysAgo = getDailyRowAtOffset(dailyRows, 5);
+  const twentyDaysAgo = getDailyRowAtOffset(dailyRows, 20);
+  const eligibleMa20 = currentRows.filter((row) => row.ma20 !== null).length;
+  const eligibleMa50 = currentRows.filter((row) => row.ma50 !== null).length;
+  const ma20Breadth = current ? pctOfTotal(current.aboveMa20Count, eligibleMa20) : null;
+  const ma50Breadth = current ? pctOfTotal(current.aboveMa50Count, eligibleMa50) : null;
+  const ma20Breadth5d = fiveDaysAgo ? pctOfTotal(fiveDaysAgo.aboveMa20Count, eligibleMa20) : null;
+  const ma20Breadth20d = twentyDaysAgo ? pctOfTotal(twentyDaysAgo.aboveMa20Count, eligibleMa20) : null;
+  const ma20BreadthChange5d = changeBetween(ma20Breadth, ma20Breadth5d);
+  const ma20BreadthChange20d = changeBetween(ma20Breadth, ma20Breadth20d);
+  const indexChange20d =
+    current?.indexChangeVsCurrent !== null && twentyDaysAgo?.indexChangeVsCurrent !== null
+      ? (current?.indexChangeVsCurrent ?? 0) - (twentyDaysAgo?.indexChangeVsCurrent ?? 0)
+      : null;
+  const divergence = changeBetween(indexChange20d, ma20BreadthChange20d);
+
+  if (
+    ma20Breadth !== null &&
+    ma50Breadth !== null &&
+    ma20Breadth < 30 &&
+    ma50Breadth < 35
+  ) {
+    return {
+      regime: "market_washout",
+      label: "Market Washout",
+      tone: "error",
+      description: "Most stocks are below key moving averages. Defensive posture has priority.",
+      indexChange20d,
+      ma20Breadth,
+      ma20BreadthChange5d,
+      ma20BreadthChange20d,
+      ma50Breadth,
+      divergence,
+    };
+  }
+
+  if (
+    ma20Breadth !== null &&
+    ma20BreadthChange5d !== null &&
+    ma20Breadth < 55 &&
+    ma20BreadthChange5d >= 12
+  ) {
+    return {
+      regime: "early_recovery",
+      label: "Early Recovery",
+      tone: "success",
+      description: "Short-term participation is improving quickly from a lower base.",
+      indexChange20d,
+      ma20Breadth,
+      ma20BreadthChange5d,
+      ma20BreadthChange20d,
+      ma50Breadth,
+      divergence,
+    };
+  }
+
+  if (
+    indexChange20d !== null &&
+    ma20BreadthChange20d !== null &&
+    indexChange20d > 0 &&
+    ma20BreadthChange20d < -5
+  ) {
+    return {
+      regime: "narrow_rally",
+      label: "Narrow Rally",
+      tone: "warning",
+      description: "Index is rising while participation weakens. Watch for leadership concentration.",
+      indexChange20d,
+      ma20Breadth,
+      ma20BreadthChange5d,
+      ma20BreadthChange20d,
+      ma50Breadth,
+      divergence,
+    };
+  }
+
+  if (
+    indexChange20d !== null &&
+    ma20BreadthChange20d !== null &&
+    ma20Breadth !== null &&
+    indexChange20d > 0 &&
+    ma20BreadthChange20d >= 0 &&
+    ma20Breadth >= 55
+  ) {
+    return {
+      regime: "broad_rally",
+      label: "Broad Rally",
+      tone: "success",
+      description: "Index and participation are moving together. The rally has healthier breadth.",
+      indexChange20d,
+      ma20Breadth,
+      ma20BreadthChange5d,
+      ma20BreadthChange20d,
+      ma50Breadth,
+      divergence,
+    };
+  }
+
+  if (
+    indexChange20d !== null &&
+    ma20Breadth !== null &&
+    indexChange20d < 0 &&
+    ma20Breadth >= 50
+  ) {
+    return {
+      regime: "healthy_pullback",
+      label: "Healthy Pullback",
+      tone: "neutral",
+      description: "Index is pulling back, but participation remains resilient.",
+      indexChange20d,
+      ma20Breadth,
+      ma20BreadthChange5d,
+      ma20BreadthChange20d,
+      ma50Breadth,
+      divergence,
+    };
+  }
+
+  return {
+    regime: "neutral",
+    label: "Neutral",
+    tone: "neutral",
+    description: "Breadth and index action are mixed. Wait for clearer confirmation.",
+    indexChange20d,
+    ma20Breadth,
+    ma20BreadthChange5d,
+    ma20BreadthChange20d,
+    ma50Breadth,
+    divergence,
   };
 }
 

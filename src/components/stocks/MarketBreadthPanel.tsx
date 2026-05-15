@@ -3,6 +3,7 @@
 import React from "react";
 import {
   BreadthMetrics,
+  BreadthRegimeSignal,
   PowerMetrics,
   StockRow,
   VolumeMomentumMetrics,
@@ -13,6 +14,7 @@ interface MarketBreadthPanelProps {
   momentum: VolumeMomentumMetrics;
   powerMetrics: PowerMetrics;
   rows: StockRow[];
+  regime: BreadthRegimeSignal;
 }
 
 function pct(value: number | null): string {
@@ -58,13 +60,49 @@ function getTone(value: number | null) {
   return "Defensive";
 }
 
+function signedPct(value: number | null): string {
+  if (value === null) return "N/A";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function getRegimeToneClass(tone: BreadthRegimeSignal["tone"]) {
+  if (tone === "success") {
+    return {
+      badge: "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400",
+      border: "border-success-200 dark:border-success-500/30",
+      text: "text-success-700 dark:text-success-400",
+    };
+  }
+  if (tone === "warning") {
+    return {
+      badge: "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400",
+      border: "border-warning-200 dark:border-warning-500/30",
+      text: "text-warning-700 dark:text-warning-400",
+    };
+  }
+  if (tone === "error") {
+    return {
+      badge: "bg-error-50 text-error-700 dark:bg-error-500/10 dark:text-error-400",
+      border: "border-error-200 dark:border-error-500/30",
+      text: "text-error-700 dark:text-error-400",
+    };
+  }
+  return {
+    badge: "bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300",
+    border: "border-gray-200 dark:border-gray-800",
+    text: "text-gray-700 dark:text-gray-300",
+  };
+}
+
 export default function MarketBreadthPanel({
   breadth,
   momentum,
   powerMetrics,
   rows,
+  regime,
 }: MarketBreadthPanelProps) {
   const maBars = [getMaStats(rows, 10), getMaStats(rows, 20), getMaStats(rows, 50)];
+  const regimeTone = getRegimeToneClass(regime.tone);
 
   const highLowTotal = Math.max(breadth.highCount + breadth.lowCount, 1);
   const highWidth = (breadth.highCount / highLowTotal) * 100;
@@ -93,6 +131,51 @@ export default function MarketBreadthPanel({
           <span className="rounded-full bg-gray-100 px-3 py-1 text-gray-600 dark:bg-white/10 dark:text-gray-300">
             A/D {breadth.advanceDeclineRatio === null ? "N/A" : breadth.advanceDeclineRatio.toFixed(2)}
           </span>
+        </div>
+      </div>
+
+      <div className={`mb-5 rounded-xl border ${regimeTone.border} bg-white p-4 dark:bg-white/[0.03]`}>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+              Breadth Regime
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <h4 className={`text-xl font-semibold ${regimeTone.text}`}>{regime.label}</h4>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${regimeTone.badge}`}>
+                Divergence {signedPct(regime.divergence)}
+              </span>
+            </div>
+            <p className="mt-2 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
+              {regime.description}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 lg:min-w-[520px]">
+            <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+              <p className="text-xs text-gray-500 dark:text-gray-400">VNINDEX 20D</p>
+              <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                {signedPct(regime.indexChange20d)}
+              </p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+              <p className="text-xs text-gray-500 dark:text-gray-400">MA20 Breadth</p>
+              <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                {pct(regime.ma20Breadth)}
+              </p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+              <p className="text-xs text-gray-500 dark:text-gray-400">MA20 20D</p>
+              <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                {signedPct(regime.ma20BreadthChange20d)}
+              </p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+              <p className="text-xs text-gray-500 dark:text-gray-400">MA50 Breadth</p>
+              <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                {pct(regime.ma50Breadth)}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 

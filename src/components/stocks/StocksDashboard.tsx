@@ -12,15 +12,27 @@ import ATHStocksTable from "@/components/stocks/ATHStocksTable";
 import ForeignInvestorHistoryStacked from "@/components/stocks/ForeignInvestorHistoryStacked";
 import ProprietaryTradingHistoryStacked from "@/components/stocks/ProprietaryTradingHistoryStacked";
 import Top5StockersHorizontalBar from "@/components/stocks/Top5StockersHorizontalBar";
+import SmartMoneyAccumulationPanel from "@/components/stocks/SmartMoneyAccumulationPanel";
+import SmartMoneyBacktestPanel from "@/components/stocks/SmartMoneyBacktestPanel";
+import AbnormalDetectionPanel from "@/components/stocks/AbnormalDetectionPanel";
+import AbnormalBacktestPanel from "@/components/stocks/AbnormalBacktestPanel";
 import { fetchTickerRow, fetchTickerRows, fetchVixSnapshot } from "@/lib/stocks/api";
 import {
   buildDailyAggregateRows,
   computeBreadthMetrics,
+  computeBreadthRegimeSignal,
   computeMarketOverview,
   computePowerMetrics,
   computeVolumeMomentum,
   enrichStockRow,
 } from "@/lib/stocks/analytics";
+import {
+  getAbnormalBacktestSummary,
+  getAbnormalSignals,
+  getSmartMoneyAccumulationSignals,
+  getSmartMoneyBacktestSummary,
+  SMART_MONEY_WINRATE_FALLBACK_CONFIG,
+} from "@/lib/stocks/scoring";
 import { getTickers } from "@/lib/stocks/tickers";
 import { StockRow, StocksFilterState, VixSnapshot } from "@/types/stocks";
 
@@ -149,6 +161,57 @@ export default function StocksDashboard() {
   const powerMetrics = useMemo(() => computePowerMetrics(rows), [rows]);
   const marketOverview = useMemo(() => computeMarketOverview(rows, vnIndexRow), [rows, vnIndexRow]);
   const dailyRows = useMemo(() => buildDailyAggregateRows(rows, vnIndexRow), [rows, vnIndexRow]);
+  const smartMoneyRows = useMemo(
+    () => rows.filter((row) => row.exchange === "HOSE"),
+    [rows],
+  );
+  const breadthRegime = useMemo(
+    () => computeBreadthRegimeSignal(dailyRows, smartMoneyRows),
+    [dailyRows, smartMoneyRows],
+  );
+  const smartMoneyBacktest = useMemo(
+    () =>
+      getSmartMoneyBacktestSummary(smartMoneyRows, {
+        indexRow: vnIndexRow,
+      }),
+    [smartMoneyRows, vnIndexRow],
+  );
+  const winRateConfig = useMemo(() => {
+    const byExchange = smartMoneyBacktest.recommendationsByExchange;
+    const hoseRecommendation = byExchange.find((item) => item.scope === "HOSE");
+    if (hoseRecommendation) {
+      return hoseRecommendation.config;
+    }
+
+    return (
+      smartMoneyBacktest.recommendedWinRate?.config ?? SMART_MONEY_WINRATE_FALLBACK_CONFIG
+    );
+  }, [smartMoneyBacktest]);
+  const smartMoneySignals = useMemo(
+    () =>
+      getSmartMoneyAccumulationSignals(smartMoneyRows, {
+        regime: breadthRegime,
+        indexRow: vnIndexRow,
+        filterConfig: winRateConfig,
+      }),
+    [smartMoneyRows, breadthRegime, vnIndexRow, winRateConfig],
+  );
+  const abnormalSignals = useMemo(
+    () =>
+      getAbnormalSignals(rows, {
+        indexRow: vnIndexRow,
+        minTradeValue20d: minTradeValue ?? undefined,
+      }),
+    [rows, vnIndexRow, minTradeValue],
+  );
+  const abnormalBacktest = useMemo(
+    () =>
+      getAbnormalBacktestSummary(rows, {
+        indexRow: vnIndexRow,
+        minTradeValue20d: minTradeValue ?? undefined,
+      }),
+    [rows, vnIndexRow, minTradeValue],
+  );
 
   return (
     <div className="space-y-5">
@@ -181,6 +244,26 @@ export default function StocksDashboard() {
             momentum={momentumMetrics}
             powerMetrics={powerMetrics}
             rows={rows}
+            regime={breadthRegime}
+          />
+          <SmartMoneyAccumulationPanel
+            signals={smartMoneySignals}
+            isLoading={isLoading}
+            onSelectTicker={setSelectedTicker}
+            filterConfig={winRateConfig}
+          />
+          <SmartMoneyBacktestPanel
+            summary={smartMoneyBacktest}
+            isLoading={isLoading}
+          />
+          <AbnormalDetectionPanel
+            signals={abnormalSignals}
+            isLoading={isLoading}
+            onSelectTicker={setSelectedTicker}
+          />
+          <AbnormalBacktestPanel
+            summary={abnormalBacktest}
+            isLoading={isLoading}
           />
           <div className="flex flex-col gap-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-300 sm:flex-row sm:items-center sm:justify-between">
             <span className="font-medium text-gray-800 dark:text-white">Ticker coverage</span>

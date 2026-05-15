@@ -98,6 +98,227 @@ export interface BreadthMetrics {
   hlIsEstimated: boolean;
 }
 
+export type BreadthRegimeType =
+  | "broad_rally"
+  | "narrow_rally"
+  | "healthy_pullback"
+  | "market_washout"
+  | "early_recovery"
+  | "neutral";
+
+export interface BreadthRegimeSignal {
+  regime: BreadthRegimeType;
+  label: string;
+  tone: "success" | "warning" | "error" | "neutral";
+  description: string;
+  indexChange20d: number | null;
+  ma20Breadth: number | null;
+  ma20BreadthChange5d: number | null;
+  ma20BreadthChange20d: number | null;
+  ma50Breadth: number | null;
+  divergence: number | null;
+}
+
+export type SmartMoneyPattern =
+  | "Accumulation base"
+  | "Volume expansion"
+  | "Volume dry-up"
+  | "Liquidity support"
+  | "OBV confirmation"
+  | "Absorption"
+  | "Breakout setup";
+
+export interface SmartMoneySignal {
+  ticker: string;
+  exchange: TradableExchange;
+  score: number;
+  grade: "A+" | "A" | "B";
+  state: "confirmed" | "building" | "early_watch";
+  evidenceCount: number;
+  appliedScoreFloor: number;
+  componentScores: {
+    volume: number;
+    priceStructure: number;
+    flow: number;
+    trend: number;
+    risk: number;
+  };
+  patterns: SmartMoneyPattern[];
+  explanations: string[];
+  metrics: {
+    latestClose: number;
+    priceChange20d: number | null;
+    rangeCompression20d: number | null;
+    volumeRatio5dTo20d: number | null;
+    volumeRatio10dTo20d: number | null;
+    avgTradeValue20d: number | null;
+    avgTradeValue60d: number | null;
+    tradeValueRatio5dTo20d: number | null;
+    tradeValueRatio20dTo60d: number | null;
+    obvChange10d: number | null;
+    volatility20d: number | null;
+    drawdownFrom60dHigh: number | null;
+    priceChange60d: number | null;
+    relativeStrength20d: number | null;
+    indexChange20d: number | null;
+    entryPrice: number;
+    entryZoneLow: number;
+    entryZoneHigh: number;
+    stopLoss: number;
+    takeProfit1: number;
+    takeProfit2: number;
+    riskReward1: number | null;
+    riskReward2: number | null;
+  };
+}
+
+export interface SmartMoneyFilterConfig {
+  minScore: number;
+  minEvidence: number;
+  minRelativeStrength20d: number | null;
+  allowedStates: SmartMoneySignal["state"][] | null;
+}
+
+export interface SmartMoneyWalkForwardStats {
+  sliceCount: number;
+  eligibleSlices: number;
+  sampleSize: number;
+  winRate10d: number | null;
+  avgReturn10d: number | null;
+  worstSliceWinRate10d: number | null;
+  dispersion10d: number | null;
+}
+
+export interface SmartMoneyBacktestRecommendation {
+  mode: "win_rate";
+  scope: "ALL" | TradableExchange;
+  config: SmartMoneyFilterConfig;
+  sampleSize: number;
+  winRate10d: number | null;
+  avgReturn10d: number | null;
+  robustnessScore: number | null;
+  walkForward: SmartMoneyWalkForwardStats | null;
+}
+
+export interface SmartMoneyBacktestWindowStats {
+  horizon: 5 | 10 | 20;
+  sampleSize: number;
+  positiveCount: number;
+  negativeCount: number;
+  winRate: number | null;
+  avgReturn: number | null;
+  medianReturn: number | null;
+}
+
+export interface SmartMoneyBacktestStateStats {
+  state: SmartMoneySignal["state"];
+  sampleSize: number;
+  avgScore: number | null;
+  avgReturn10d: number | null;
+  winRate10d: number | null;
+}
+
+export interface SmartMoneyBacktestScoreBucket {
+  label: string;
+  sampleSize: number;
+  avgReturn10d: number | null;
+  winRate10d: number | null;
+}
+
+export interface SmartMoneyBacktestSummary {
+  lookbackDays: number;
+  totalSignals: number;
+  coverageTickers: number;
+  windows: SmartMoneyBacktestWindowStats[];
+  byState: SmartMoneyBacktestStateStats[];
+  scoreBuckets: SmartMoneyBacktestScoreBucket[];
+  recommendedWinRate: SmartMoneyBacktestRecommendation | null;
+  recommendationsByExchange: SmartMoneyBacktestRecommendation[];
+}
+
+export type AbnormalSignalType =
+  | "PRICE_SHOCK"
+  | "VOLUME_SHOCK"
+  | "TURNOVER_SPIKE"
+  | "FLOW_ANOMALY"
+  | "RANGE_BREAK";
+
+export type AbnormalAlertRank = "A" | "B" | "C";
+
+export interface AbnormalSignal {
+  ticker: string;
+  exchange: TradableExchange;
+  date: string;
+  severity: number;
+  rank: AbnormalAlertRank;
+  priorityScore: number;
+  direction: "UP" | "DOWN";
+  evidenceCount: number;
+  types: AbnormalSignalType[];
+  explanations: string[];
+  metrics: {
+    latestClose: number;
+    return1d: number | null;
+    return3d: number | null;
+    rangePercent1d: number | null;
+    return1dZ: number | null;
+    return3dZ: number | null;
+    rangeZ: number | null;
+    volumeRatio1dTo20d: number | null;
+    volumeZ: number | null;
+    avgTradeValue20d: number | null;
+    avgTradeValue60d: number | null;
+    turnoverZ: number | null;
+    turnoverRatio5dTo20d: number | null;
+    turnoverRatio20dTo60d: number | null;
+    obvChange5d: number | null;
+    obvZ: number | null;
+    relativeStrength20d: number | null;
+  };
+}
+
+export interface AbnormalBacktestWindowStats {
+  horizon: 1 | 3 | 5 | 10;
+  sampleSize: number;
+  positiveCount: number;
+  negativeCount: number;
+  winRate: number | null;
+  avgReturn: number | null;
+  medianReturn: number | null;
+}
+
+export interface AbnormalBacktestDirectionStats {
+  direction: AbnormalSignal["direction"];
+  sampleSize: number;
+  avgSeverity: number | null;
+  winRate3d: number | null;
+  avgReturn3d: number | null;
+}
+
+export interface AbnormalBacktestTypeStats {
+  type: AbnormalSignalType;
+  sampleSize: number;
+  winRate3d: number | null;
+  avgReturn3d: number | null;
+}
+
+export interface AbnormalBacktestRankStats {
+  rank: AbnormalAlertRank;
+  sampleSize: number;
+  winRate3d: number | null;
+  avgReturn3d: number | null;
+}
+
+export interface AbnormalBacktestSummary {
+  lookbackDays: number;
+  totalSignals: number;
+  coverageTickers: number;
+  windows: AbnormalBacktestWindowStats[];
+  byDirection: AbnormalBacktestDirectionStats[];
+  byType: AbnormalBacktestTypeStats[];
+  byRank: AbnormalBacktestRankStats[];
+}
+
 export interface VolumeMomentumMetrics {
   value: number | null;
   state: "expanding" | "neutral" | "contracting" | "unknown";
