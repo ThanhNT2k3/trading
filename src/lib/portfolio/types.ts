@@ -65,6 +65,11 @@ export type PortfolioSummary = {
   categories: PortfolioCategorySummary[];
 };
 
+export type PriceHistoryPoint = {
+  date: string;
+  price: number;
+};
+
 export type FundNavRow = {
   symbol: string;
   latestDate: string;
@@ -73,6 +78,7 @@ export type FundNavRow = {
   previousNav: number | null;
   change: number;
   changePercent: number;
+  history: PriceHistoryPoint[];
 };
 
 export type StockPriceRow = {
@@ -83,6 +89,7 @@ export type StockPriceRow = {
   previousPrice: number | null;
   change: number;
   changePercent: number;
+  history: PriceHistoryPoint[];
 };
 
 export type WeeklyFundPlanRow = {

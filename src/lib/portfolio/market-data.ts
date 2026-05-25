@@ -128,6 +128,12 @@ function buildFundNavRows(values: string[][]): FundNavRow[] {
         previousNav,
         change,
         changePercent: previousNav === null || previousNav === 0 ? 0 : (change / previousNav) * 100,
+        history: points
+          .map((point) => ({
+            date: point.dateLabel,
+            price: point.nav,
+          }))
+          .sort((a, b) => a.date.localeCompare(b.date)),
       },
     ];
   });
@@ -230,6 +236,10 @@ export async function fetchStockPrices(symbols: string[]): Promise<StockPriceRow
         previousPrice: previous?.close ?? null,
         change,
         changePercent: previous && previous.close !== 0 ? (change / previous.close) * 100 : 0,
+        history: orderedPoints.map((point) => ({
+          date: toPointDate(point),
+          price: point.close,
+        })),
       },
     ];
   });

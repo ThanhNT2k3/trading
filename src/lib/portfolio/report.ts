@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { normalizePortfolioData, summarizePortfolio } from "@/lib/portfolio";
+import { normalizePortfolioData, priceToCurrencyValue, summarizePortfolio } from "@/lib/portfolio";
 import {
   fetchFundMarketData,
   fetchStockPrices,
@@ -26,10 +26,6 @@ function formatCurrency(value: number) {
 
 function formatPercent(value: number) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
-}
-
-function priceUnitForHolding(holding: PortfolioHolding) {
-  return holding.type === "stock" ? 1000 : 1;
 }
 
 function upsertSnapshot(snapshots: PortfolioSnapshot[], snapshot: PortfolioSnapshot) {
@@ -59,6 +55,7 @@ function getMarketPrice(
       previousPrice: fund.previousNav,
       change: fund.change,
       changePercent: fund.changePercent,
+      history: fund.history,
     };
   }
 
@@ -72,10 +69,23 @@ function getMarketPrice(
       previousPrice: stock.previousPrice,
       change: stock.change,
       changePercent: stock.changePercent,
+      history: stock.history,
     };
   }
 
   return null;
+}
+
+function marketSnapshotsForHolding(
+  holding: PortfolioHolding,
+  price: NonNullable<ReturnType<typeof getMarketPrice>>,
+) {
+  return price.history.map((point) => ({
+    id: `snap-${holding.id}-${point.date}`,
+    holdingId: holding.id,
+    date: point.date,
+    closePrice: point.price,
+  }));
 }
 
 async function readPortfolioFile() {
@@ -95,21 +105,9 @@ function applyMarketData(
     const price = getMarketPrice(holding, fundBySymbol, stockBySymbol);
     if (!price) return holding;
 
-    dailySnapshots = upsertSnapshot(dailySnapshots, {
-      id: `snap-${holding.id}-${price.latestDate}`,
-      holdingId: holding.id,
-      date: price.latestDate,
-      closePrice: price.latestPrice,
+    marketSnapshotsForHolding(holding, price).forEach((snapshot) => {
+      dailySnapshots = upsertSnapshot(dailySnapshots, snapshot);
     });
-
-    if (price.previousDate && price.previousPrice !== null) {
-      dailySnapshots = upsertSnapshot(dailySnapshots, {
-        id: `snap-${holding.id}-${price.previousDate}`,
-        holdingId: holding.id,
-        date: price.previousDate,
-        closePrice: price.previousPrice,
-      });
-    }
 
     return {
       ...holding,
@@ -139,7 +137,12 @@ function buildMovementLines(
       if (!price) return null;
 
       const effectiveHolding = { ...holding, type: price.source };
-      const dailyProfitLoss = price.change * priceUnitForHolding(effectiveHolding) * holding.quantity;
+      const latestPrice = priceToCurrencyValue(effectiveHolding, price.latestPrice);
+      const previousPrice =
+        price.previousPrice === null
+          ? latestPrice
+          : priceToCurrencyValue(effectiveHolding, price.previousPrice);
+      const dailyProfitLoss = (latestPrice - previousPrice) * holding.quantity;
 
       return {
         symbol: holding.symbol,

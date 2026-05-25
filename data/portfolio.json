@@ -20,7 +20,7 @@
       "category": "Co phieu",
       "quantity": 3900,
       "averageCost": 27.23,
-      "currentPrice": 27.8,
+      "currentPrice": 25.85,
       "currency": "VND",
       "notes": ""
     },
@@ -32,7 +32,7 @@
       "category": "Co phieu",
       "quantity": 1800,
       "averageCost": 38.1,
-      "currentPrice": 35.95,
+      "currentPrice": 34.95,
       "currency": "VND",
       "notes": ""
     },
@@ -44,7 +44,7 @@
       "category": "Co phieu",
       "quantity": 675,
       "averageCost": 30.79,
-      "currentPrice": 25.95,
+      "currentPrice": 24.6,
       "currency": "VND",
       "notes": ""
     },
@@ -56,7 +56,7 @@
       "category": "Co phieu",
       "quantity": 1000,
       "averageCost": 26.86,
-      "currentPrice": 27.05,
+      "currentPrice": 26.55,
       "currency": "VND",
       "notes": ""
     },
@@ -68,7 +68,7 @@
       "category": "Co phieu",
       "quantity": 200,
       "averageCost": 26.06,
-      "currentPrice": 16.55,
+      "currentPrice": 16.05,
       "currency": "VND",
       "notes": ""
     },
@@ -78,9 +78,9 @@
       "symbol": "VMEEF",
       "name": "VMEEF",
       "category": "Quy dau tu",
-      "quantity": 7915.4,
-      "averageCost": 15.096,
-      "currentPrice": 17109,
+      "quantity": 8004,
+      "averageCost": 77.97577096426188,
+      "currentPrice": 16796,
       "currency": "VND",
       "notes": ""
     },
@@ -90,9 +90,9 @@
       "symbol": "VEOF",
       "name": "VEOF",
       "category": "Quy dau tu",
-      "quantity": 2508.39,
-      "averageCost": 32.88,
-      "currentPrice": 35992,
+      "quantity": 2550.6,
+      "averageCost": 230.93223725155954,
+      "currentPrice": 35183,
       "currency": "VND",
       "notes": ""
     },
@@ -102,9 +102,9 @@
       "symbol": "TCFIN",
       "name": "TCFIN",
       "category": "Quy dau tu",
-      "quantity": 4130.03,
-      "averageCost": 13.873,
-      "currentPrice": 14139,
+      "quantity": 4236.56,
+      "averageCost": 133.79471407273311,
+      "currentPrice": 13965,
       "currency": "VND",
       "notes": ""
     },
@@ -114,9 +114,9 @@
       "symbol": "VCBF-BCF",
       "name": "VCBFBCF",
       "category": "Quy dau tu",
-      "quantity": 926.62,
-      "averageCost": 43.693,
-      "currentPrice": 44496,
+      "quantity": 971.68,
+      "averageCost": 1096.3658572170673,
+      "currentPrice": 44142,
       "currency": "VND",
       "notes": ""
     },
@@ -126,9 +126,9 @@
       "symbol": "DCDS",
       "name": "DCDS",
       "category": "Quy dau tu",
-      "quantity": 504.43,
-      "averageCost": 105.2,
-      "currentPrice": 105861,
+      "quantity": 513.8738515804285,
+      "averageCost": 2049.269548861605,
+      "currentPrice": 104434,
       "currency": "VND",
       "notes": ""
     }
@@ -271,7 +271,169 @@
       "holdingId": "hld-d606437c-bd9e-45fe-8b9b-47380c0cb353",
       "date": "2026-05-15",
       "closePrice": 22.8
+    },
+    {
+      "id": "snap-hld-6e22707d-9da3-4af3-855f-83e1e5021eaf-2026-05-18",
+      "holdingId": "hld-6e22707d-9da3-4af3-855f-83e1e5021eaf",
+      "date": "2026-05-18",
+      "closePrice": 14174
+    },
+    {
+      "id": "snap-hld-d3d66bb0-bc48-407e-a058-4c139890e910-2026-05-18",
+      "holdingId": "hld-d3d66bb0-bc48-407e-a058-4c139890e910",
+      "date": "2026-05-18",
+      "closePrice": 17089
+    },
+    {
+      "id": "snap-hld-049a804a-165b-412f-9b61-788980a1f2ca-2026-05-18",
+      "holdingId": "hld-049a804a-165b-412f-9b61-788980a1f2ca",
+      "date": "2026-05-18",
+      "closePrice": 105889
+    },
+    {
+      "id": "snap-hld-300ebfaa-4560-4ea0-a75c-ceeab0008199-2026-05-18",
+      "holdingId": "hld-300ebfaa-4560-4ea0-a75c-ceeab0008199",
+      "date": "2026-05-18",
+      "closePrice": 44618
+    },
+    {
+      "id": "snap-hld-edbb3d1c-99fa-4643-984f-f6a0340cf784-2026-05-18",
+      "holdingId": "hld-edbb3d1c-99fa-4643-984f-f6a0340cf784",
+      "date": "2026-05-18",
+      "closePrice": 35996
+    },
+    {
+      "id": "snap-hld-d606437c-bd9e-45fe-8b9b-47380c0cb353-2026-05-20",
+      "holdingId": "hld-d606437c-bd9e-45fe-8b9b-47380c0cb353",
+      "date": "2026-05-20",
+      "closePrice": 22.65
+    },
+    {
+      "id": "snap-hld-d606437c-bd9e-45fe-8b9b-47380c0cb353-2026-05-21",
+      "holdingId": "hld-d606437c-bd9e-45fe-8b9b-47380c0cb353",
+      "date": "2026-05-21",
+      "closePrice": 22.8
+    },
+    {
+      "id": "snap-hld-374297aa-39e6-42b9-8a7d-fb90088b032e-2026-05-20",
+      "holdingId": "hld-374297aa-39e6-42b9-8a7d-fb90088b032e",
+      "date": "2026-05-20",
+      "closePrice": 25.8
+    },
+    {
+      "id": "snap-hld-374297aa-39e6-42b9-8a7d-fb90088b032e-2026-05-21",
+      "holdingId": "hld-374297aa-39e6-42b9-8a7d-fb90088b032e",
+      "date": "2026-05-21",
+      "closePrice": 25.85
+    },
+    {
+      "id": "snap-hld-0300269b-7234-4580-b18b-fdf4579ce9bf-2026-05-20",
+      "holdingId": "hld-0300269b-7234-4580-b18b-fdf4579ce9bf",
+      "date": "2026-05-20",
+      "closePrice": 35.2
+    },
+    {
+      "id": "snap-hld-0300269b-7234-4580-b18b-fdf4579ce9bf-2026-05-21",
+      "holdingId": "hld-0300269b-7234-4580-b18b-fdf4579ce9bf",
+      "date": "2026-05-21",
+      "closePrice": 34.95
+    },
+    {
+      "id": "snap-hld-60dd2d8c-3cff-44af-9042-610f47a8fffa-2026-05-20",
+      "holdingId": "hld-60dd2d8c-3cff-44af-9042-610f47a8fffa",
+      "date": "2026-05-20",
+      "closePrice": 24.95
+    },
+    {
+      "id": "snap-hld-60dd2d8c-3cff-44af-9042-610f47a8fffa-2026-05-21",
+      "holdingId": "hld-60dd2d8c-3cff-44af-9042-610f47a8fffa",
+      "date": "2026-05-21",
+      "closePrice": 24.6
+    },
+    {
+      "id": "snap-hld-8e617d94-9b0c-47b5-9604-f5e6909e60c5-2026-05-20",
+      "holdingId": "hld-8e617d94-9b0c-47b5-9604-f5e6909e60c5",
+      "date": "2026-05-20",
+      "closePrice": 26.2
+    },
+    {
+      "id": "snap-hld-8e617d94-9b0c-47b5-9604-f5e6909e60c5-2026-05-21",
+      "holdingId": "hld-8e617d94-9b0c-47b5-9604-f5e6909e60c5",
+      "date": "2026-05-21",
+      "closePrice": 26.55
+    },
+    {
+      "id": "snap-hld-5898be02-e561-40d7-867a-5baf1271ca1c-2026-05-20",
+      "holdingId": "hld-5898be02-e561-40d7-867a-5baf1271ca1c",
+      "date": "2026-05-20",
+      "closePrice": 16.4
+    },
+    {
+      "id": "snap-hld-5898be02-e561-40d7-867a-5baf1271ca1c-2026-05-21",
+      "holdingId": "hld-5898be02-e561-40d7-867a-5baf1271ca1c",
+      "date": "2026-05-21",
+      "closePrice": 16.05
+    },
+    {
+      "id": "snap-hld-d3d66bb0-bc48-407e-a058-4c139890e910-2026-05-20",
+      "holdingId": "hld-d3d66bb0-bc48-407e-a058-4c139890e910",
+      "date": "2026-05-20",
+      "closePrice": 16897
+    },
+    {
+      "id": "snap-hld-d3d66bb0-bc48-407e-a058-4c139890e910-2026-05-21",
+      "holdingId": "hld-d3d66bb0-bc48-407e-a058-4c139890e910",
+      "date": "2026-05-21",
+      "closePrice": 16796
+    },
+    {
+      "id": "snap-hld-edbb3d1c-99fa-4643-984f-f6a0340cf784-2026-05-20",
+      "holdingId": "hld-edbb3d1c-99fa-4643-984f-f6a0340cf784",
+      "date": "2026-05-20",
+      "closePrice": 35433
+    },
+    {
+      "id": "snap-hld-edbb3d1c-99fa-4643-984f-f6a0340cf784-2026-05-21",
+      "holdingId": "hld-edbb3d1c-99fa-4643-984f-f6a0340cf784",
+      "date": "2026-05-21",
+      "closePrice": 35183
+    },
+    {
+      "id": "snap-hld-6e22707d-9da3-4af3-855f-83e1e5021eaf-2026-05-20",
+      "holdingId": "hld-6e22707d-9da3-4af3-855f-83e1e5021eaf",
+      "date": "2026-05-20",
+      "closePrice": 14100
+    },
+    {
+      "id": "snap-hld-6e22707d-9da3-4af3-855f-83e1e5021eaf-2026-05-21",
+      "holdingId": "hld-6e22707d-9da3-4af3-855f-83e1e5021eaf",
+      "date": "2026-05-21",
+      "closePrice": 13965
+    },
+    {
+      "id": "snap-hld-300ebfaa-4560-4ea0-a75c-ceeab0008199-2026-05-20",
+      "holdingId": "hld-300ebfaa-4560-4ea0-a75c-ceeab0008199",
+      "date": "2026-05-20",
+      "closePrice": 44270
+    },
+    {
+      "id": "snap-hld-300ebfaa-4560-4ea0-a75c-ceeab0008199-2026-05-21",
+      "holdingId": "hld-300ebfaa-4560-4ea0-a75c-ceeab0008199",
+      "date": "2026-05-21",
+      "closePrice": 44142
+    },
+    {
+      "id": "snap-hld-049a804a-165b-412f-9b61-788980a1f2ca-2026-05-20",
+      "holdingId": "hld-049a804a-165b-412f-9b61-788980a1f2ca",
+      "date": "2026-05-20",
+      "closePrice": 104941
+    },
+    {
+      "id": "snap-hld-049a804a-165b-412f-9b61-788980a1f2ca-2026-05-21",
+      "holdingId": "hld-049a804a-165b-412f-9b61-788980a1f2ca",
+      "date": "2026-05-21",
+      "closePrice": 104434
     }
   ],
-  "updatedAt": "2026-05-15T16:14:39.351Z"
+  "updatedAt": "2026-05-21T13:11:00.001Z"
 }

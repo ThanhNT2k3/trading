@@ -35,8 +35,10 @@ function snapshotsForHolding(snapshots: PortfolioSnapshot[], holdingId: string) 
     .sort(byDateAsc);
 }
 
-function priceUnitForHolding(holding: PortfolioHolding) {
-  return holding.type === "stock" ? 1000 : 1;
+export function priceToCurrencyValue(holding: PortfolioHolding, price: number) {
+  if (holding.type === "stock") return price * 1000;
+  if (holding.type === "fund" && Math.abs(price) < 1000) return price * 1000;
+  return price;
 }
 
 function buildHoldingSummary(
@@ -44,13 +46,17 @@ function buildHoldingSummary(
   snapshots: PortfolioSnapshot[],
 ): Omit<HoldingSummary, "allocationPercent"> {
   const quantity = toNumber(holding.quantity);
-  const priceUnit = priceUnitForHolding(holding);
-  const averageCost = toNumber(holding.averageCost) * priceUnit;
+  const averageCost = priceToCurrencyValue(holding, toNumber(holding.averageCost));
   const orderedSnapshots = snapshotsForHolding(snapshots, holding.id);
   const latestSnapshot = orderedSnapshots.at(-1);
   const previousSnapshot = orderedSnapshots.at(-2);
-  const latestPrice = (latestSnapshot?.closePrice ?? toNumber(holding.currentPrice)) * priceUnit;
-  const previousPrice = previousSnapshot ? previousSnapshot.closePrice * priceUnit : null;
+  const latestPrice = priceToCurrencyValue(
+    holding,
+    latestSnapshot?.closePrice ?? toNumber(holding.currentPrice),
+  );
+  const previousPrice = previousSnapshot
+    ? priceToCurrencyValue(holding, previousSnapshot.closePrice)
+    : null;
   const totalCost = quantity * averageCost;
   const marketValue = quantity * latestPrice;
   const unrealizedProfitLoss = marketValue - totalCost;

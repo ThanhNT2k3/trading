@@ -1,6 +1,7 @@
 "use client";
 
 import React, { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import {
   ArrowDownIcon,
@@ -20,7 +21,9 @@ import type {
   StockPriceRow,
   WeeklyFundPlanRow,
 } from "@/lib/portfolio";
-import { normalizePortfolioData, summarizePortfolio } from "@/lib/portfolio";
+import { normalizePortfolioData, priceToCurrencyValue, summarizePortfolio } from "@/lib/portfolio";
+
+const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 type PortfolioResponse = {
   portfolio: PortfolioData;
@@ -134,11 +137,12 @@ async function getPortfolioError(response: Response) {
   }
 }
 
-function formatCurrency(value: number, currency = "VND") {
+function formatCurrency(value: number, currency = "VND", fractionDigits = currency === "VND" ? 0 : 2) {
   return new Intl.NumberFormat("vi-VN", {
     style: "currency",
     currency,
-    maximumFractionDigits: currency === "VND" ? 0 : 2,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
   }).format(value);
 }
 
@@ -152,12 +156,16 @@ function formatPercent(value: number) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
+function formatCompactCurrency(value: number) {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
+  return value.toFixed(2);
 }
 
-function priceUnitForHolding(holding: PortfolioHolding) {
-  return holding.type === "stock" ? 1000 : 1;
+function today() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function toHoldingForm(holding: PortfolioHolding): HoldingFormState {
@@ -193,6 +201,7 @@ function getMarketPrice(
       previousPrice: fundNav.previousNav,
       change: fundNav.change,
       changePercent: fundNav.changePercent,
+      history: fundNav.history,
     };
   }
 
@@ -206,6 +215,7 @@ function getMarketPrice(
       previousPrice: stockPrice.previousPrice,
       change: stockPrice.change,
       changePercent: stockPrice.changePercent,
+      history: stockPrice.history,
     };
   }
 
@@ -280,19 +290,16 @@ function ProfitBadge({ value, percent }: { value: number; percent?: number }) {
   );
 }
 
-function FundNavBadge({ value, percent }: { value: number; percent: number }) {
-  const isPositive = value >= 0;
-  const Icon = isPositive ? ArrowUpIcon : ArrowDownIcon;
-  const className = isPositive
-    ? "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400"
-    : "bg-error-50 text-error-700 dark:bg-error-500/10 dark:text-error-400";
-
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${className}`}>
-      <Icon className="h-3 w-3" />
-      {formatCurrency(value)} ({formatPercent(percent)})
-    </span>
-  );
+function marketSnapshotsForHolding(
+  holding: PortfolioHolding,
+  price: NonNullable<ReturnType<typeof getMarketPrice>>,
+) {
+  return price.history.map((point) => ({
+    id: `snap-${holding.id}-${point.date}`,
+    holdingId: holding.id,
+    date: point.date,
+    closePrice: point.price,
+  }));
 }
 
 function upsertSnapshot(snapshots: PortfolioSnapshot[], snapshot: PortfolioSnapshot) {
@@ -349,26 +356,9 @@ export default function PortfolioPage() {
       const price = getMarketPrice(holding.symbol, fundNavBySymbol, stockPriceBySymbol);
       if (!price) return holding;
 
-      const latestSnapshot: PortfolioSnapshot = {
-        id: `snap-${holding.id}-${price.latestDate}`,
-        holdingId: holding.id,
-        date: price.latestDate,
-        closePrice: price.latestPrice,
-      };
-      const previousSnapshot: PortfolioSnapshot | null =
-        price.previousDate && price.previousPrice !== null
-          ? {
-              id: `snap-${holding.id}-${price.previousDate}`,
-              holdingId: holding.id,
-              date: price.previousDate,
-              closePrice: price.previousPrice,
-            }
-          : null;
-
-      if (previousSnapshot) {
-        nextSnapshots = upsertSnapshot(nextSnapshots, previousSnapshot);
-      }
-      nextSnapshots = upsertSnapshot(nextSnapshots, latestSnapshot);
+      marketSnapshotsForHolding(holding, price).forEach((snapshot) => {
+        nextSnapshots = upsertSnapshot(nextSnapshots, snapshot);
+      });
 
       return {
         ...holding,
@@ -404,9 +394,13 @@ export default function PortfolioPage() {
         const price = getMarketPrice(holding.symbol, fundNavBySymbol, stockPriceBySymbol);
         if (!price) return null;
         const effectiveHolding = { ...holding, type: price.source };
-        const priceUnit = priceUnitForHolding(effectiveHolding);
-        const dailyProfitLoss = price.change * priceUnit * holding.quantity;
-        const marketValue = price.latestPrice * priceUnit * holding.quantity;
+        const latestPrice = priceToCurrencyValue(effectiveHolding, price.latestPrice);
+        const previousPrice =
+          price.previousPrice === null
+            ? latestPrice
+            : priceToCurrencyValue(effectiveHolding, price.previousPrice);
+        const dailyProfitLoss = (latestPrice - previousPrice) * holding.quantity;
+        const marketValue = latestPrice * holding.quantity;
 
         return {
           holding,
@@ -467,23 +461,6 @@ export default function PortfolioPage() {
       .sort((a, b) => Math.abs(b.dailyProfitLoss) - Math.abs(a.dailyProfitLoss));
   }, [todayMovements]);
 
-  const groupedTodayMovements = useMemo(() => {
-    const groups = new Map<string, typeof todayMovements>();
-
-    todayMovements.forEach((row) => {
-      const category = row.holding.category || "Uncategorized";
-      groups.set(category, [...(groups.get(category) ?? []), row]);
-    });
-
-    return Array.from(groups.entries()).map(([category, rows]) => ({
-      category,
-      rows,
-      dailyProfitLoss: rows.reduce((sum, row) => sum + row.dailyProfitLoss, 0),
-      marketValue: rows.reduce((sum, row) => sum + row.marketValue, 0),
-    }));
-  }, [todayMovements]);
-
-
   const weeklyFundPlanSummary = useMemo(() => {
     return {
       totalAmount: weeklyFundPlan.reduce((sum, row) => sum + row.amount, 0),
@@ -500,11 +477,13 @@ export default function PortfolioPage() {
 
     if (livePortfolio.dailySnapshots.length === 0 && livePortfolio.holdings.length > 0) {
       const totalCost = livePortfolio.holdings.reduce(
-        (sum, holding) => sum + holding.averageCost * priceUnitForHolding(holding) * holding.quantity,
+        (sum, holding) =>
+          sum + priceToCurrencyValue(holding, holding.averageCost) * holding.quantity,
         0,
       );
       const marketValue = livePortfolio.holdings.reduce(
-        (sum, holding) => sum + holding.currentPrice * priceUnitForHolding(holding) * holding.quantity,
+        (sum, holding) =>
+          sum + priceToCurrencyValue(holding, holding.currentPrice) * holding.quantity,
         0,
       );
       const unrealizedProfitLoss = marketValue - totalCost;
@@ -561,12 +540,11 @@ export default function PortfolioPage() {
         livePortfolio.holdings.forEach((holding) => {
           const snapshot = findSnapshotAtOrBefore(holding.id, date);
           if (!snapshot) return;
-          const priceUnit = priceUnitForHolding(holding);
-          const value = snapshot.closePrice * priceUnit * holding.quantity;
-          const cost = holding.averageCost * priceUnit * holding.quantity;
+          const value = priceToCurrencyValue(holding, snapshot.closePrice) * holding.quantity;
+          const cost = priceToCurrencyValue(holding, holding.averageCost) * holding.quantity;
           const previousSnapshot = findSnapshotBefore(holding.id, date);
           const previousValue = previousSnapshot
-            ? previousSnapshot.closePrice * priceUnit * holding.quantity
+            ? priceToCurrencyValue(holding, previousSnapshot.closePrice) * holding.quantity
             : value;
 
           totalCost += cost;
@@ -596,6 +574,105 @@ export default function PortfolioPage() {
         };
       });
   }, [livePortfolio]);
+
+  const dailyPortfolioChart = useMemo(() => {
+    const rows = dailyPortfolioRows.slice(0, 12).reverse();
+    const categories = rows.map((row) => row.date.slice(5));
+
+    return {
+      series: [
+        {
+          name: "Value",
+          type: "area",
+          data: rows.map((row) => Math.round(row.marketValue)),
+        },
+        {
+          name: "Total P/L",
+          type: "line",
+          data: rows.map((row) => Math.round(row.unrealizedProfitLoss)),
+        },
+        {
+          name: "Day P/L",
+          type: "column",
+          data: rows.map((row) => Math.round(row.dailyProfitLoss)),
+        },
+      ],
+      options: {
+        chart: {
+          toolbar: { show: false },
+          fontFamily: "inherit",
+          stacked: false,
+          zoom: { enabled: false },
+        },
+        colors: ["#465FFF", "#D92D20", "#12B76A"],
+        dataLabels: { enabled: false },
+        stroke: {
+          width: [2, 2, 0],
+          curve: "smooth",
+        },
+        fill: {
+          opacity: [0.14, 1, 0.85],
+          type: ["gradient", "solid", "solid"],
+          gradient: {
+            opacityFrom: 0.25,
+            opacityTo: 0.02,
+          },
+        },
+        grid: {
+          borderColor: "#EAECF0",
+          strokeDashArray: 4,
+        },
+        legend: {
+          position: "top",
+          horizontalAlign: "center",
+          fontSize: "12px",
+          markers: { size: 5 },
+        },
+        plotOptions: {
+          bar: {
+            borderRadius: 3,
+            columnWidth: "42%",
+          },
+        },
+        xaxis: {
+          categories,
+          axisBorder: { show: false },
+          axisTicks: { show: false },
+          labels: {
+            style: { colors: "#667085", fontSize: "12px" },
+          },
+        },
+        yaxis: [
+          {
+            seriesName: "Value",
+            labels: {
+              formatter: (value: number) => formatCompactCurrency(value),
+              style: { colors: "#667085" },
+            },
+          },
+          {
+            seriesName: "Total P/L",
+            opposite: true,
+            labels: {
+              formatter: (value: number) => formatCompactCurrency(value),
+              style: { colors: "#667085" },
+            },
+          },
+          {
+            seriesName: "Day P/L",
+            show: false,
+          },
+        ],
+        tooltip: {
+          shared: true,
+          intersect: false,
+          y: {
+            formatter: (value: number) => formatCurrency(value),
+          },
+        },
+      } satisfies ApexCharts.ApexOptions,
+    };
+  }, [dailyPortfolioRows]);
 
   const loadPortfolio = useCallback(async () => {
     setIsLoading(true);
@@ -787,26 +864,9 @@ export default function PortfolioPage() {
       const price = getMarketPrice(holding.symbol, fundNavBySymbol, stockPriceBySymbol);
       if (!price) return;
 
-      const latestSnapshot: PortfolioSnapshot = {
-        id: `snap-${holding.id}-${price.latestDate}`,
-        holdingId: holding.id,
-        date: price.latestDate,
-        closePrice: price.latestPrice,
-      };
-      const previousSnapshot: PortfolioSnapshot | null =
-        price.previousDate && price.previousPrice !== null
-          ? {
-              id: `snap-${holding.id}-${price.previousDate}`,
-              holdingId: holding.id,
-              date: price.previousDate,
-              closePrice: price.previousPrice,
-            }
-          : null;
-
-      const withPrevious = previousSnapshot
-        ? upsertSnapshot(nextSnapshots, previousSnapshot)
-        : nextSnapshots;
-      nextSnapshots.splice(0, nextSnapshots.length, ...upsertSnapshot(withPrevious, latestSnapshot));
+      marketSnapshotsForHolding(holding, price).forEach((snapshot) => {
+        nextSnapshots.splice(0, nextSnapshots.length, ...upsertSnapshot(nextSnapshots, snapshot));
+      });
     });
 
     await savePortfolio(
@@ -959,6 +1019,190 @@ export default function PortfolioPage() {
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+        <div className="flex flex-col gap-1 text-center">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+            Daily portfolio P/L
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Value, total P/L, and daily movement
+          </p>
+        </div>
+        <div className="mx-auto mt-5 max-w-5xl rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="text-center lg:text-left">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Today&apos;s movement
+              </h3>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Latest market movement from matched funds and stocks
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row lg:justify-end">
+              <button
+                type="button"
+                onClick={refreshMarketPrices}
+                disabled={isLoadingFundNav || isLoadingStockPrices}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+              >
+                <ArrowDownIcon className="h-4 w-4" />
+                Refresh
+              </button>
+              <button
+                type="button"
+                onClick={() => applyMarketPrices()}
+                disabled={
+                  isSaving ||
+                  isLoadingFundNav ||
+                  isLoadingStockPrices ||
+                  todayMovements.length === 0
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+              >
+                <CheckCircleIcon className="h-4 w-4" />
+                Sync market prices
+              </button>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Today P/L"
+              value={formatCurrency(todayMovementSummary.total)}
+              helper={`${todayMovements.length} matched holdings`}
+              tone={todayMovementSummary.total >= 0 ? "good" : "bad"}
+            />
+            <StatCard
+              label="Up"
+              value={String(todayMovementSummary.up)}
+              helper="Holdings positive"
+              tone="good"
+            />
+            <StatCard
+              label="Down"
+              value={String(todayMovementSummary.down)}
+              helper="Holdings negative"
+              tone="bad"
+            />
+            <StatCard
+              label="Largest move"
+              value={todayMovementSummary.largestMove?.holding.symbol ?? "-"}
+              helper={
+                todayMovementSummary.largestMove
+                  ? formatCurrency(todayMovementSummary.largestMove.dailyProfitLoss)
+                  : "No matched holding"
+              }
+              tone={(todayMovementSummary.largestMove?.dailyProfitLoss ?? 0) >= 0 ? "good" : "bad"}
+            />
+          </div>
+          {categoryMovements.length > 0 ? (
+            <div className="mt-5 overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-100 text-sm dark:divide-gray-800">
+                <thead>
+                  <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    <th className="px-3 py-3">Category</th>
+                    <th className="px-3 py-3 text-right">Holdings</th>
+                    <th className="px-3 py-3 text-right">Value</th>
+                    <th className="px-3 py-3 text-right">Today P/L</th>
+                    <th className="px-3 py-3">Chart</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {categoryMovements.map((row) => {
+                    const maxMove = Math.max(
+                      ...categoryMovements.map((item) => Math.abs(item.dailyProfitLoss)),
+                      1,
+                    );
+                    const width = Math.max((Math.abs(row.dailyProfitLoss) / maxMove) * 100, 4);
+                    const isPositive = row.dailyProfitLoss >= 0;
+
+                    return (
+                      <tr key={row.category} className="text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4">
+                          <div className="font-medium text-gray-900 dark:text-white">
+                            {row.category}
+                          </div>
+                        </td>
+                        <td className="px-3 py-4 text-right">{row.count}</td>
+                        <td className="px-3 py-4 text-right">{formatCurrency(row.marketValue)}</td>
+                        <td className="px-3 py-4 text-right">
+                          <ProfitBadge
+                            value={row.dailyProfitLoss}
+                            percent={row.dailyProfitLossPercent}
+                          />
+                        </td>
+                        <td className="min-w-36 px-3 py-4">
+                          <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800">
+                            <div
+                              className={`h-2 rounded-full ${isPositive ? "bg-success-500" : "bg-error-500"}`}
+                              style={{ width: `${width}%` }}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
+        {dailyPortfolioRows.length > 0 ? (
+          <div className="mx-auto mt-5 h-[320px] w-full max-w-5xl">
+            <Chart
+              options={dailyPortfolioChart.options}
+              series={dailyPortfolioChart.series}
+              type="line"
+              height={320}
+            />
+          </div>
+        ) : null}
+        <div className="mt-4 overflow-x-auto">
+          {dailyPortfolioRows.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              No daily portfolio data yet. Add a holding or sync market prices.
+            </p>
+          ) : (
+            <table className="min-w-full divide-y divide-gray-100 text-sm dark:divide-gray-800">
+              <thead>
+                <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  <th className="px-3 py-3">Date</th>
+                  <th className="px-3 py-3 text-right">Value</th>
+                  <th className="px-3 py-3 text-right">Total P/L</th>
+                  <th className="px-3 py-3 text-right">Day P/L</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {dailyPortfolioRows.slice(0, 8).map((row) => (
+                  <tr key={row.date} className="text-gray-700 dark:text-gray-300">
+                    <td className="px-3 py-4">
+                      <div className="font-medium text-gray-900 dark:text-white">{row.date}</div>
+                      {row.categorySummary ? (
+                        <div className="mt-1 max-w-72 truncate text-xs text-gray-500 dark:text-gray-400">
+                          {row.categorySummary}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-4 text-right">{formatCurrency(row.marketValue)}</td>
+                    <td className="px-3 py-4 text-right">
+                      <ProfitBadge
+                        value={row.unrealizedProfitLoss}
+                        percent={row.unrealizedProfitLossPercent}
+                      />
+                    </td>
+                    <td className="px-3 py-4 text-right">
+                      <ProfitBadge
+                        value={row.dailyProfitLoss}
+                        percent={row.dailyProfitLossPercent}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-base font-semibold text-gray-900 dark:text-white">
@@ -1052,201 +1296,6 @@ export default function PortfolioPage() {
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-              Today&apos;s movement
-            </h2>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Summary from Google Sheet fund NAV and stock prices from the existing stocks API.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <button
-              type="button"
-              onClick={refreshMarketPrices}
-              disabled={isLoadingFundNav || isLoadingStockPrices}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/[0.03]"
-            >
-              <ArrowDownIcon className="h-4 w-4" />
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={() => applyMarketPrices()}
-              disabled={
-                isSaving ||
-                isLoadingFundNav ||
-                isLoadingStockPrices ||
-                todayMovements.length === 0
-              }
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
-            >
-              <CheckCircleIcon className="h-4 w-4" />
-              Sync market prices
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
-          <StatCard
-            label="Today P/L"
-            value={formatCurrency(todayMovementSummary.total)}
-            helper={`${todayMovements.length} matched holdings`}
-            tone={todayMovementSummary.total >= 0 ? "good" : "bad"}
-          />
-          <StatCard label="Up" value={String(todayMovementSummary.up)} helper="Holdings positive" tone="good" />
-          <StatCard label="Down" value={String(todayMovementSummary.down)} helper="Holdings negative" tone="bad" />
-          <StatCard
-            label="Largest move"
-            value={todayMovementSummary.largestMove?.holding.symbol ?? "-"}
-            helper={
-              todayMovementSummary.largestMove
-                ? formatCurrency(todayMovementSummary.largestMove.dailyProfitLoss)
-                : "No matched fund"
-            }
-            tone={(todayMovementSummary.largestMove?.dailyProfitLoss ?? 0) >= 0 ? "good" : "bad"}
-          />
-        </div>
-
-        <div className="mt-5 overflow-x-auto">
-          {categoryMovements.length === 0 ? null : (
-            <table className="min-w-full divide-y divide-gray-100 text-sm dark:divide-gray-800">
-              <thead>
-                <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  <th className="px-3 py-3">Category</th>
-                  <th className="px-3 py-3 text-right">Holdings</th>
-                  <th className="px-3 py-3 text-right">Value</th>
-                  <th className="px-3 py-3 text-right">Today P/L</th>
-                  <th className="px-3 py-3">Chart</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {categoryMovements.map((row) => {
-                  const maxMove = Math.max(
-                    ...categoryMovements.map((item) => Math.abs(item.dailyProfitLoss)),
-                    1,
-                  );
-                  const width = Math.max((Math.abs(row.dailyProfitLoss) / maxMove) * 100, 4);
-                  const isPositive = row.dailyProfitLoss >= 0;
-
-                  return (
-                    <tr key={row.category} className="text-gray-700 dark:text-gray-300">
-                      <td className="px-3 py-4">
-                        <div className="font-medium text-gray-900 dark:text-white">
-                          {row.category}
-                        </div>
-                      </td>
-                      <td className="px-3 py-4 text-right">{row.count}</td>
-                      <td className="px-3 py-4 text-right">{formatCurrency(row.marketValue)}</td>
-                      <td className="px-3 py-4 text-right">
-                        <ProfitBadge
-                          value={row.dailyProfitLoss}
-                          percent={row.dailyProfitLossPercent}
-                        />
-                      </td>
-                      <td className="min-w-36 px-3 py-4">
-                        <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800">
-                          <div
-                            className={`h-2 rounded-full ${isPositive ? "bg-success-500" : "bg-error-500"}`}
-                            style={{ width: `${width}%` }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        <div className="mt-5 overflow-x-auto">
-          {isLoadingFundNav || isLoadingStockPrices ? (
-            <div className="space-y-3" aria-busy="true" aria-label="Loading market prices">
-              {[0, 1].map((item) => (
-                <div key={item} className="h-12 rounded-lg bg-gray-100 dark:bg-gray-800" />
-              ))}
-            </div>
-          ) : todayMovements.length === 0 ? (
-            <div role="status" className="rounded-lg border border-dashed border-gray-300 p-6 text-center dark:border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                No matched market movement yet
-              </h3>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Add a stock symbol such as ACB or a fund symbol such as DCBF, then refresh prices.
-              </p>
-            </div>
-          ) : (
-            <table className="min-w-full divide-y divide-gray-100 text-sm dark:divide-gray-800">
-              <thead>
-                <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  <th className="px-3 py-3">Symbol</th>
-                  <th className="px-3 py-3">Date</th>
-                  <th className="px-3 py-3 text-right">Quantity</th>
-                  <th className="px-3 py-3 text-right">Price</th>
-                  <th className="px-3 py-3 text-right">Change</th>
-                  <th className="px-3 py-3 text-right">Today P/L</th>
-                  <th className="px-3 py-3">Chart</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {groupedTodayMovements.flatMap((group) => {
-                  const maxMove = Math.max(
-                    ...todayMovements.map((item) => Math.abs(item.dailyProfitLoss)),
-                    1,
-                  );
-
-                  return [
-                    <tr key={`category-${group.category}`} className="bg-gray-50 dark:bg-white/[0.03]">
-                      <td colSpan={5} className="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
-                        {group.category} · {group.rows.length} holdings · {formatCurrency(group.marketValue)}
-                      </td>
-                      <td className="px-3 py-3 text-right">
-                        <ProfitBadge value={group.dailyProfitLoss} />
-                      </td>
-                      <td />
-                    </tr>,
-                    ...group.rows.map((row) => {
-                      const width = Math.max((Math.abs(row.dailyProfitLoss) / maxMove) * 100, 4);
-                      const isPositive = row.dailyProfitLoss >= 0;
-
-                      return (
-                        <tr key={row.holding.id} className="text-gray-700 dark:text-gray-300">
-                          <td className="px-3 py-4">
-                            <div className="font-medium text-gray-900 dark:text-white">
-                              {row.holding.symbol}
-                            </div>
-                          </td>
-                          <td className="px-3 py-4">{row.price.latestDate}</td>
-                          <td className="px-3 py-4 text-right">{formatNumber(row.holding.quantity)}</td>
-                          <td className="px-3 py-4 text-right">{formatCurrency(row.price.latestPrice)}</td>
-                          <td className="px-3 py-4 text-right">
-                            <FundNavBadge value={row.price.change} percent={row.price.changePercent} />
-                          </td>
-                          <td className="px-3 py-4 text-right">
-                            <ProfitBadge value={row.dailyProfitLoss} />
-                          </td>
-                          <td className="min-w-36 px-3 py-4">
-                            <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800">
-                              <div
-                                className={`h-2 rounded-full ${isPositive ? "bg-success-500" : "bg-error-500"}`}
-                                style={{ width: `${width}%` }}
-                              />
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    }),
-                  ];
-                })}
               </tbody>
             </table>
           )}
@@ -1449,8 +1498,7 @@ export default function PortfolioPage() {
         </aside>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+      <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
           <h2 className="text-base font-semibold text-gray-900 dark:text-white">
             Allocation summary
           </h2>
@@ -1478,59 +1526,7 @@ export default function PortfolioPage() {
               ))
             )}
           </div>
-        </section>
-
-        <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-            Daily portfolio P/L
-          </h2>
-          <div className="mt-4 overflow-x-auto">
-            {dailyPortfolioRows.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                No daily portfolio data yet. Add a holding or sync market prices.
-              </p>
-            ) : (
-              <table className="min-w-full divide-y divide-gray-100 text-sm dark:divide-gray-800">
-                <thead>
-                  <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    <th className="px-3 py-3">Date</th>
-                    <th className="px-3 py-3 text-right">Value</th>
-                    <th className="px-3 py-3 text-right">Total P/L</th>
-                    <th className="px-3 py-3 text-right">Day P/L</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {dailyPortfolioRows.slice(0, 8).map((row) => (
-                    <tr key={row.date} className="text-gray-700 dark:text-gray-300">
-                      <td className="px-3 py-4">
-                        <div className="font-medium text-gray-900 dark:text-white">{row.date}</div>
-                        {row.categorySummary ? (
-                          <div className="mt-1 max-w-72 truncate text-xs text-gray-500 dark:text-gray-400">
-                            {row.categorySummary}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-4 text-right">{formatCurrency(row.marketValue)}</td>
-                      <td className="px-3 py-4 text-right">
-                        <ProfitBadge
-                          value={row.unrealizedProfitLoss}
-                          percent={row.unrealizedProfitLossPercent}
-                        />
-                      </td>
-                      <td className="px-3 py-4 text-right">
-                        <ProfitBadge
-                          value={row.dailyProfitLoss}
-                          percent={row.dailyProfitLossPercent}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </section>
-      </div>
+      </section>
     </div>
   );
 }
