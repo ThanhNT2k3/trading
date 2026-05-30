@@ -62,6 +62,33 @@ export interface StockRow {
   error?: string;
 }
 
+export interface StockFundamentals {
+  ticker: string;
+  source: string;
+  asOf: string | null;
+  eps: number | null;
+  dilutedEps: number | null;
+  bvps: number | null;
+  pe: number | null;
+  pb: number | null;
+  marketCap: number | null;
+  sharesOutstanding: number | null;
+  revenue: number | null;
+  revenueGrowth: number | null;
+  netIncome: number | null;
+  netIncomeGrowth: number | null;
+  roe: number | null;
+  totalAssets: number | null;
+  totalDebt: number | null;
+  equity: number | null;
+  debtToAssets: number | null;
+  debtToEquity: number | null;
+  operatingCashFlow: number | null;
+  freeCashFlow: number | null;
+  dataPoints: string[];
+  missingData: string[];
+}
+
 export interface ChartPoint {
   x: string;
   y: number;
@@ -385,6 +412,87 @@ export interface ProprietaryTradeData {
   value: number;
   companyName: string;
   changeType: number;
+}
+
+export type MOSSignalType =
+  | "STRONG_CANDIDATE"
+  | "WATCHLIST"
+  | "NEUTRAL"
+  | "OVERVALUED"
+  | "AVOID";
+
+export type MOSAlertSeverity = "strong" | "watch" | "info" | "risk" | "danger";
+
+export interface IntrinsicValueBreakdown {
+  intrinsicValue: number | null;
+  peFairValue: number | null;
+  pbFairValue: number | null;
+  grahamValue: number | null;
+  fairPe: number | null;
+  fairPb: number | null;
+  epsEstimate: number | null;
+  bookValuePerShareEstimate: number | null;
+  confidence: number;
+  dataPoints: string[];
+  missingData: string[];
+  source: "market-ratios" | "fundamentals";
+}
+
+export interface MOSAlert {
+  code:
+    | "MOS_STRONG_ZONE"
+    | "MOS_BUY_ZONE"
+    | "MOS_OVERVALUED"
+    | "VALUE_TRAP_RISK"
+    | "LOW_CONFIDENCE"
+    | "QUALITY_SUPPORT";
+  severity: MOSAlertSeverity;
+  message: string;
+}
+
+export interface MOSTradePlan {
+  action: "ACCUMULATE" | "WATCH" | "WAIT" | "AVOID";
+  entryPrice: number | null;
+  entryZoneLow: number | null;
+  entryZoneHigh: number | null;
+  stopLoss: number | null;
+  takeProfit1: number | null;
+  takeProfit2: number | null;
+  riskReward1: number | null;
+  riskReward2: number | null;
+  riskPercent: number | null;
+  upsideToFairValue: number | null;
+  planNote: string;
+}
+
+export interface MOSRankingRow {
+  ticker: string;
+  exchange: TradableExchange;
+  price: number | null;
+  intrinsicValue: number | null;
+  marginOfSafety: number | null;
+  qualityScore: number;
+  valuationScore: number;
+  confidenceScore: number;
+  finalScore: number;
+  signal: MOSSignalType;
+  alerts: MOSAlert[];
+  reasons: string[];
+  tradePlan: MOSTradePlan;
+  breakdown: IntrinsicValueBreakdown;
+  metrics: {
+    pe: number | null;
+    pb: number | null;
+    roe: number | null;
+    revenueGrowth: number | null;
+    netIncomeGrowth: number | null;
+    debtToEquity: number | null;
+    debtToAssets: number | null;
+    operatingCashFlow: number | null;
+    freeCashFlow: number | null;
+    volumeMomentum: number | null;
+    powerIndex: number | null;
+  };
 }
 
 export interface InvestorHistoryData {

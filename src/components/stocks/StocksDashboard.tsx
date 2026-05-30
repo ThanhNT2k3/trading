@@ -6,16 +6,14 @@ import MarketOverviewCards from "@/components/stocks/MarketOverviewCards";
 import StockFilters from "@/components/stocks/StockFilters";
 import StockSummaryCards from "@/components/stocks/StockSummaryCards";
 import StockTable from "@/components/stocks/StockTable";
-import StockLineChart from "@/components/stocks/StockLineChart";
-import StockTechnicalAnalysis from "@/components/stocks/StockTechnicalAnalysis";
 import ATHStocksTable from "@/components/stocks/ATHStocksTable";
 import ForeignInvestorHistoryStacked from "@/components/stocks/ForeignInvestorHistoryStacked";
 import ProprietaryTradingHistoryStacked from "@/components/stocks/ProprietaryTradingHistoryStacked";
 import Top5StockersHorizontalBar from "@/components/stocks/Top5StockersHorizontalBar";
 import SmartMoneyAccumulationPanel from "@/components/stocks/SmartMoneyAccumulationPanel";
-import SmartMoneyBacktestPanel from "@/components/stocks/SmartMoneyBacktestPanel";
 import AbnormalDetectionPanel from "@/components/stocks/AbnormalDetectionPanel";
-import AbnormalBacktestPanel from "@/components/stocks/AbnormalBacktestPanel";
+import SignalValidationPanel from "@/components/stocks/SignalValidationPanel";
+import VnIndexSeasonalityChart from "@/components/stocks/VnIndexSeasonalityChart";
 import { fetchTickerRow, fetchTickerRows, fetchVixSnapshot } from "@/lib/stocks/api";
 import {
   buildDailyAggregateRows,
@@ -152,10 +150,6 @@ export default function StocksDashboard() {
     }
   }, [rows, selectedTicker]);
 
-  const selectedRow = useMemo(
-    () => rows.find((row) => row.ticker === selectedTicker) ?? null,
-    [rows, selectedTicker],
-  );
   const breadthMetrics = useMemo(() => computeBreadthMetrics(rows), [rows]);
   const momentumMetrics = useMemo(() => computeVolumeMomentum(rows), [rows]);
   const powerMetrics = useMemo(() => computePowerMetrics(rows), [rows]);
@@ -246,23 +240,22 @@ export default function StocksDashboard() {
             rows={rows}
             regime={breadthRegime}
           />
+          <VnIndexSeasonalityChart />
+          <StockTable rows={dailyRows} isLoading={isLoading} vixSnapshot={vixSnapshot} />
           <SmartMoneyAccumulationPanel
             signals={smartMoneySignals}
             isLoading={isLoading}
             onSelectTicker={setSelectedTicker}
             filterConfig={winRateConfig}
           />
-          <SmartMoneyBacktestPanel
-            summary={smartMoneyBacktest}
-            isLoading={isLoading}
-          />
           <AbnormalDetectionPanel
             signals={abnormalSignals}
             isLoading={isLoading}
             onSelectTicker={setSelectedTicker}
           />
-          <AbnormalBacktestPanel
-            summary={abnormalBacktest}
+          <SignalValidationPanel
+            smartMoney={smartMoneyBacktest}
+            abnormal={abnormalBacktest}
             isLoading={isLoading}
           />
           <div className="flex flex-col gap-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-300 sm:flex-row sm:items-center sm:justify-between">
@@ -271,21 +264,11 @@ export default function StocksDashboard() {
               Showing {rows.length} of {filteredTickers.length} tickers. Max {MAX_FETCH_TICKERS} fetched for performance.
             </span>
           </div>
-          <StockTable rows={dailyRows} isLoading={isLoading} vixSnapshot={vixSnapshot} />
           <ATHStocksTable stocks={rows} isLoading={isLoading} />
         </div>
         
       </div>
       <div className="space-y-6 2xl:col-span-12">
-        {/* Technical Analysis Section */}
-        {selectedRow ? (
-          <StockTechnicalAnalysis row={selectedRow} />
-        ) : (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-white/[0.03]">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Select a stock to view technical analysis</p>
-          </div>
-        )}
-
         {/* Trading History Charts - Stacked Bar */}
         <div className="grid grid-cols-1 gap-12 2xl:grid-cols-2">
           <div>
@@ -298,27 +281,6 @@ export default function StocksDashboard() {
 
         {/* Top 5 Stocks Horizontal Bar */}
         <Top5StockersHorizontalBar />
-
-        {/* Traditional Charts Section */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-white/[0.03]">
-          <div className="mb-4">
-            <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">
-              {selectedTicker} Price Chart
-            </h3>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Historical price movements and trends
-            </p>
-          </div>
-          {selectedRow ? (
-            <StockLineChart row={selectedRow} />
-          ) : (
-            <div className="flex h-96 items-center justify-center rounded-lg bg-gray-50 dark:bg-gray-900">
-              <p className="text-sm text-gray-500 dark:text-gray-400">Select a stock to view chart</p>
-            </div>
-          )}
-        </div>
-
-
       </div>
       </div>
       );
